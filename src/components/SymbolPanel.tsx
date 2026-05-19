@@ -10,14 +10,23 @@ interface Props {
 export function SymbolPanel({ symbol }: Props) {
   if (!symbol) {
     return (
-      <div className="rounded-xl border border-dashed border-line bg-bg-elevated p-4 text-sm text-fg-muted">
+      <div
+        role="status"
+        aria-live="polite"
+        className="rounded-xl border border-dashed border-line bg-bg-elevated p-4 text-sm text-fg-muted"
+      >
         토큰을 클릭하면 기호 설명이 표시됩니다.
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col gap-3 rounded-xl border border-line bg-bg-elevated p-4">
+    <div
+      role="region"
+      aria-label="기호 설명"
+      aria-live="polite"
+      className="flex flex-col gap-3 rounded-xl border border-line bg-bg-elevated p-4"
+    >
       <div className="flex items-start justify-between gap-2">
         <div>
           <div className="font-mono text-2xl text-fg">

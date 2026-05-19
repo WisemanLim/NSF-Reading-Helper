@@ -10,12 +10,15 @@
 
 - **수식 입력 4종**: LaTeX · MathML · AsciiMath · Unicode 기호 직접
 - **MathJax v3 + mhchem** 렌더링 (화학식 `\ce{...}` 지원)
-- **Speech Rule Engine (SRE)** 기반 한국어 자연어 읽기
-- **기호 사전** — 60+ 핵심 기호 시드, 분야별(수학/물리/화학/생물/지구과학/통계/논리) 의미 분기
-- **퍼지 검색** — 한글·영문·LaTeX·Unicode·별칭 통합
-- **데스크탑**: Tauri 2 + Rust + SQLite (완전 오프라인)
+- **Speech Rule Engine (SRE) + 자체 한국어 룰셋**(`ko-clearspeak.json`) 으로 자연스러운 한국어 읽기
+- **기호 사전** — **506개 기호** (16개 도메인, JSON 큐레이션 — `src-tauri/data/seed.json`)
+- **퍼지 검색** — SQLite **FTS5 trigram** + **Levenshtein** 점수 기반 (오타 보정)
+- **데스크탑**: Tauri 2 + Rust + SQLite (완전 오프라인) — **자동 업데이트** + `.nsfpack` 사전 가져오기/내보내기
 - **웹**: 동일 코드 + axum 백엔드 + nginx + Let's Encrypt 자동 TLS
-- **접근성**: `role="math"`, `aria-label` SRE 읽기, 다크 모드
+- **PWA**: 모바일 설치 가능, 오프라인 서비스 워커, 모바일 drawer 네비게이션
+- **OCR** (옵션 sidecar): 수식 이미지를 끌어다 놓으면 pix2tex 가 LaTeX 로 변환
+- **손그림 검색**: HTML 캔버스에 그리면 Detexify 호환 분류기가 LaTeX 후보 제안
+- **접근성**: WCAG 2.1 AA 지향 — `role="math"` + SRE 한국어 aria-label, 키보드 네비, skip-link, focus ring, ⌘K 검색 단축키
 
 ---
 
@@ -238,17 +241,25 @@ pnpm tauri:build       # 현재 OS용 인스톨러
 
 ## 로드맵
 
-V1 (MVP)는 본 저장소가 1차 셋업한 상태입니다 — PRD `M0` + 일부 `M1`/`M2`.
+PRD V1 + V1.5 + V2 항목 본 저장소에 모두 셋업되었습니다.
 
-다음 단계:
-- M1 완료: SRE 한국어 룰셋 (`ko-clearspeak.json`) 정밀화
-- M2: 시드 500+ 확장 (전문가 큐레이션)
-- M3: 검색 퍼지 (Levenshtein/FTS5), A11y 패스
-- M4: 코드 서명, 자동 업데이트, `.nsfpack`
-- M5: 웹 분석 모니터링 (Sentry/Plausible)
-- V1.5: OCR (pix2tex), 손그림 검색, 화학 mhchem 확장
+- ✅ M0 — Tauri 2 + 웹 stack scaffolding
+- ✅ M1 — 분석 파이프라인 (입력→정규화→렌더→읽기) + SRE 한국어 룰 (`src/lib/ko-clearspeak.json`)
+- ✅ M2 — **506개 시드** (JSON 큐레이션, [src-tauri/data/seed.json](src-tauri/data/seed.json))
+- ✅ M3 — FTS5 + Levenshtein 퍼지 검색, A11y 패스 (skip-link, ARIA, 키보드 네비, ⌘K)
+- ✅ M4 — Tauri updater 플러그인, `.nsfpack` 가져오기/내보내기, GitHub Actions 멀티 OS 릴리스 ([release.yml](.github/workflows/release.yml) — **현재 자동 트리거는 주석 처리되어 비활성**. 사용 시 파일 내 YAML 주석 해제)
+- ✅ M5 — 웹 도커 배포 + nginx-proxy + acme-companion
+- ✅ V1.5 — pix2tex OCR sidecar ([ocr/main.py](ocr/main.py))
+- ✅ V2 — **Detexify-style 손그림 검색** ([HandwritingPad](src/components/HandwritingPad.tsx) + [detexify.ts](src/lib/detexify.ts) + axum 프록시)
+- ✅ V2 — **PWA**: manifest + service worker + 모바일 drawer + 192/512 아이콘
+- ✅ 코드 서명 플레이북 ([.doc/CODE_SIGNING.md](.doc/CODE_SIGNING.md)) — Apple Developer ID + Windows Authenticode/EV + Tauri updater 키 발급 절차 + 비용 + CI 시크릿 매핑
 
-세부 — [`.doc/PRD.md` §13](.doc/PRD.md).
+남은 작업 (운영):
+- 실 인증서 결제·발급 (Apple Developer Program, Windows OV/EV) — 위 플레이북 따라 진행
+- 사전 콘텐츠 학회/교과부 표기 표준 검수
+- 자체 호스팅 Detexify 인스턴스 (현재 공개 API 또는 동일 형식 자체 서버에 의존)
+
+세부 — [`.doc/PRD.md`](.doc/PRD.md) · 설치/사용 — [`.doc/Usage.md`](.doc/Usage.md) · 코드 서명 — [`.doc/CODE_SIGNING.md`](.doc/CODE_SIGNING.md).
 
 ---
 

@@ -1,0 +1,9 @@
+fastapi==0.115.5
+uvicorn[standard]==0.32.1
+python-multipart==0.0.12
+Pillow==11.1.0
+# CPU-only torch — for GPU, swap to nvidia/cuda base image and torch+cuXX wheel.
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.5.1
+torchvision==0.20.1
+pix2tex==0.1.5

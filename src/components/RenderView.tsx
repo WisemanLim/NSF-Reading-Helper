@@ -4,9 +4,12 @@ import { renderLatex } from "../lib/mathjax";
 interface Props {
   latex: string;
   display?: boolean;
+  /** Korean speech text used for the accessible label so screen readers
+   *  announce the formula's meaning rather than the raw LaTeX source. */
+  ariaSpeech?: string;
 }
 
-export function RenderView({ latex, display = true }: Props) {
+export function RenderView({ latex, display = true, ariaSpeech }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!ref.current) return;
@@ -27,8 +30,9 @@ export function RenderView({ latex, display = true }: Props) {
     <div
       ref={ref}
       role="math"
-      aria-label={latex}
-      className="min-h-[80px] overflow-x-auto rounded-xl border border-line bg-bg-elevated p-6 text-center text-fg"
+      aria-label={ariaSpeech || latex || "수식"}
+      tabIndex={0}
+      className="min-h-[80px] overflow-x-auto rounded-xl border border-line bg-bg-elevated p-6 text-center text-fg focus:outline-none focus-visible:ring-2 focus-visible:ring-brand"
     />
   );
 }

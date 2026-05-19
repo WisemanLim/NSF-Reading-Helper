@@ -76,4 +76,16 @@ export const webIpc = {
   ttsStop: async (): Promise<void> => {
     /* same as above */
   },
+
+  packImport: async (_path: string): Promise<never> => {
+    throw new Error(".nsfpack import is desktop-only");
+  },
+  packExport: async (_path: string, _name?: string): Promise<never> => {
+    throw new Error(".nsfpack export is desktop-only");
+  },
+  ftsRebuild: async (): Promise<void> => {
+    await jsend("POST", "/admin/fts-rebuild").catch(() => {
+      /* optional endpoint */
+    });
+  },
 };

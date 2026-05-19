@@ -20,6 +20,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             let handle = app.handle();
             let data_dir = handle
@@ -48,6 +49,9 @@ pub fn run() {
             commands::settings_set,
             commands::tts_speak,
             commands::tts_stop,
+            commands::pack_import,
+            commands::pack_export,
+            commands::fts_rebuild,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

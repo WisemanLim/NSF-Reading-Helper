@@ -1,35 +1,42 @@
 //! NSF Reading Helper — HTTP server.
 //!
-//! Routes mirror the Tauri commands so the React frontend can reuse the same
-//! `ipc` shape over fetch().
+//! Backend storage is selected at runtime via `NSF_DATABASE_URL`:
+//!   - empty / `sqlite:...`   → rusqlite (same engine the Tauri desktop uses)
+//!   - `postgres://...`       → tokio-postgres + pg_trgm + fuzzystrmatch
+//!
+//! All HTTP handlers go through `DbBackend` which uniformly exposes async
+//! methods, so the route layer is backend-agnostic.
 
+mod backend;
 mod core;
+mod db_pg;
+mod seed_pg;
 
 use std::net::SocketAddr;
 use std::path::PathBuf;
-use std::sync::Arc;
 
 use axum::extract::{Path as AxPath, Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use axum::routing::{delete, get, post, put};
+use axum::routing::{delete, get, post};
 use axum::{Json, Router};
 use serde::Deserialize;
+use serde_json::Value;
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::TraceLayer;
 
-use crate::core::analyzer;
-use crate::core::db::Db;
+use crate::backend::{analyze as analyze_with_backend, open_from_env, DbBackend};
 use crate::core::error::AppError;
 use crate::core::models::{
     AnalyzeRequest, AnalyzeResult, HistoryItem, Note, SearchOptions, Settings,
     SymbolDetail, SymbolExample, SymbolHit,
 };
-use crate::core::settings as settings_store;
+
+const SETTINGS_KEY: &str = "user_settings_v1";
 
 #[derive(Clone)]
 struct AppState {
-    db: Arc<Db>,
+    db: DbBackend,
 }
 
 struct ApiError(AppError);
@@ -63,9 +70,11 @@ async fn main() {
         .map(PathBuf::from)
         .unwrap_or_else(|_| PathBuf::from("/data"));
     std::fs::create_dir_all(&data_dir).expect("create data dir");
-    let db_path = data_dir.join("nsf-reading.sqlite");
-    let db = Arc::new(Db::open(&db_path).expect("open db"));
-    db.seed_if_empty().expect("seed dictionary");
+    let default_sqlite_path = data_dir.join("nsf-reading.sqlite");
+
+    let db = open_from_env(&default_sqlite_path)
+        .await
+        .expect("open db backend");
 
     let state = AppState { db };
 
@@ -79,7 +88,8 @@ async fn main() {
         .route("/favorites", get(favorites_list).post(favorites_add))
         .route("/favorites/:id", delete(favorites_remove))
         .route("/notes", get(notes_list).post(notes_upsert))
-        .route("/settings", get(settings_get).put(settings_set));
+        .route("/settings", get(settings_get).put(settings_set))
+        .route("/handwriting/classify", post(handwriting_classify));
 
     let app = Router::new()
         .nest("/api", api)
@@ -107,8 +117,8 @@ async fn analyze(
     State(s): State<AppState>,
     Json(req): Json<AnalyzeRequest>,
 ) -> ApiResult<Json<AnalyzeResult>> {
-    let mut r = analyzer::analyze(&s.db, &req)?;
-    let expr_id = s.db.save_history(&req, &r)?;
+    let mut r = analyze_with_backend(&s.db, &req).await?;
+    let expr_id = s.db.save_history(&req, &r).await?;
     r.expression_id = Some(expr_id);
     Ok(Json(r))
 }
@@ -130,27 +140,25 @@ async fn symbol_search(
         symbol_type: q.symbol_type,
         limit: q.limit,
     };
-    Ok(Json(s.db.symbol_search(&q.q, Some(&opts))?))
+    Ok(Json(s.db.symbol_search(&q.q, Some(&opts)).await?))
 }
 
 async fn symbol_get(
     State(s): State<AppState>,
     AxPath(id): AxPath<i64>,
 ) -> ApiResult<Json<SymbolDetail>> {
-    Ok(Json(s.db.symbol_detail(id)?))
+    Ok(Json(s.db.symbol_detail(id).await?))
 }
 
 async fn symbol_examples(
     State(s): State<AppState>,
     AxPath(id): AxPath<i64>,
 ) -> ApiResult<Json<Vec<SymbolExample>>> {
-    Ok(Json(s.db.symbol_examples(id)?))
+    Ok(Json(s.db.symbol_examples(id).await?))
 }
 
-async fn history_list(
-    State(s): State<AppState>,
-) -> ApiResult<Json<Vec<HistoryItem>>> {
-    Ok(Json(s.db.history_list(100)?))
+async fn history_list(State(s): State<AppState>) -> ApiResult<Json<Vec<HistoryItem>>> {
+    Ok(Json(s.db.history_list(100).await?))
 }
 
 #[derive(Deserialize)]
@@ -162,39 +170,87 @@ async fn favorites_add(
     State(s): State<AppState>,
     Json(body): Json<FavoriteBody>,
 ) -> ApiResult<StatusCode> {
-    s.db.favorites_add(body.symbol_id)?;
+    s.db.favorites_add(body.symbol_id).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 async fn favorites_remove(
     State(s): State<AppState>,
     AxPath(id): AxPath<i64>,
 ) -> ApiResult<StatusCode> {
-    s.db.favorites_remove(id)?;
+    s.db.favorites_remove(id).await?;
     Ok(StatusCode::NO_CONTENT)
 }
-async fn favorites_list(
-    State(s): State<AppState>,
-) -> ApiResult<Json<Vec<SymbolHit>>> {
-    Ok(Json(s.db.favorites_list()?))
+async fn favorites_list(State(s): State<AppState>) -> ApiResult<Json<Vec<SymbolHit>>> {
+    Ok(Json(s.db.favorites_list().await?))
 }
 
 async fn notes_upsert(
     State(s): State<AppState>,
     Json(note): Json<Note>,
 ) -> ApiResult<Json<Note>> {
-    Ok(Json(s.db.notes_upsert(note)?))
+    Ok(Json(s.db.notes_upsert(note).await?))
 }
 async fn notes_list(State(s): State<AppState>) -> ApiResult<Json<Vec<Note>>> {
-    Ok(Json(s.db.notes_list()?))
+    Ok(Json(s.db.notes_list().await?))
 }
 
 async fn settings_get(State(s): State<AppState>) -> ApiResult<Json<Settings>> {
-    Ok(Json(settings_store::load(&s.db)?))
+    let raw = s.db.settings_get(SETTINGS_KEY).await?;
+    let settings: Settings = raw
+        .as_deref()
+        .and_then(|s| serde_json::from_str(s).ok())
+        .unwrap_or_default();
+    Ok(Json(settings))
 }
+
 async fn settings_set(
     State(s): State<AppState>,
     Json(settings): Json<Settings>,
 ) -> ApiResult<Json<Settings>> {
-    settings_store::save(&s.db, &settings)?;
+    let raw = serde_json::to_string(&settings)
+        .map_err(|e| AppError::Generic(format!("serialize settings: {e}")))?;
+    s.db.settings_set(SETTINGS_KEY, &raw).await?;
     Ok(Json(settings))
+}
+
+/// Proxy to detexify.kirelabs.org for handwritten-symbol classification.
+async fn handwriting_classify(Json(body): Json<Value>) -> Response {
+    let endpoint = std::env::var("NSF_DETEXIFY_URL")
+        .unwrap_or_else(|_| "https://detexify.kirelabs.org/classify.json".into());
+    let client = match reqwest::Client::builder()
+        .user_agent("nsf-reading-helper/0.1")
+        .timeout(std::time::Duration::from_secs(10))
+        .build()
+    {
+        Ok(c) => c,
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({ "error": e.to_string() })),
+            )
+                .into_response();
+        }
+    };
+    match client.post(&endpoint).json(&body).send().await {
+        Ok(resp) => {
+            let status = resp.status();
+            match resp.json::<Value>().await {
+                Ok(json) => (
+                    StatusCode::from_u16(status.as_u16()).unwrap_or(StatusCode::OK),
+                    Json(json),
+                )
+                    .into_response(),
+                Err(e) => (
+                    StatusCode::BAD_GATEWAY,
+                    Json(serde_json::json!({ "error": format!("detexify response: {e}") })),
+                )
+                    .into_response(),
+            }
+        }
+        Err(e) => (
+            StatusCode::BAD_GATEWAY,
+            Json(serde_json::json!({ "error": format!("detexify upstream: {e}") })),
+        )
+            .into_response(),
+    }
 }

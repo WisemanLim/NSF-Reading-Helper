@@ -1,21 +1,80 @@
 //! Seed dictionary — installed on first DB boot when `symbols` is empty.
-//! 60+ core symbols across math/physics/chemistry/biology/earth-science/stats.
+//! Source data lives in `src-tauri/data/seed.json` and is embedded at compile
+//! time via `include_str!`. Edit the JSON to expand the dictionary; no code
+//! changes needed.
+
+use std::collections::HashMap;
+
+use serde::Deserialize;
 
 use crate::core::db::Db;
 use crate::core::error::AppResult;
 
+const SEED_JSON: &str = include_str!("../../data/seed.json");
+
+#[derive(Debug, Deserialize)]
+struct SeedFile {
+    domains: Vec<DomainSeed>,
+    symbols: Vec<SymbolSeedRaw>,
+}
+
+#[derive(Debug, Deserialize)]
+struct DomainSeed {
+    code: String,
+    name_ko: String,
+    #[serde(default)]
+    name_en: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct SymbolSeedRaw {
+    #[serde(default)]
+    unicode_char: Option<String>,
+    #[serde(default)]
+    latex_command: Option<String>,
+    #[serde(default)]
+    mathml_tag: Option<String>,
+    canonical_name_ko: String,
+    #[serde(default)]
+    canonical_name_en: Option<String>,
+    #[serde(default)]
+    reading_ko: Option<String>,
+    #[serde(default)]
+    reading_en: Option<String>,
+    short_meaning_ko: String,
+    #[serde(default)]
+    short_meaning_en: Option<String>,
+    symbol_type: String,
+    #[serde(default = "default_difficulty")]
+    difficulty_level: i64,
+    #[serde(default)]
+    flags: Vec<String>,
+    #[serde(default)]
+    notes: Option<String>,
+    #[serde(default)]
+    aliases: Vec<(String, String)>,
+    #[serde(default)]
+    domains: Vec<(String, String)>,
+    #[serde(default)]
+    examples: Vec<(String, String)>,
+}
+
+fn default_difficulty() -> i64 {
+    1
+}
+
 #[derive(Debug, Clone)]
-pub struct SymbolSeed {
-    pub unicode_char: Option<&'static str>,
-    pub latex_command: Option<&'static str>,
-    pub mathml_tag: Option<&'static str>,
-    pub canonical_name_ko: &'static str,
-    pub canonical_name_en: Option<&'static str>,
-    pub reading_ko: Option<&'static str>,
-    pub reading_en: Option<&'static str>,
-    pub short_meaning_ko: &'static str,
-    pub short_meaning_en: Option<&'static str>,
-    pub symbol_type: &'static str,
+pub struct SymbolSeed<'a> {
+    pub unicode_char: Option<&'a str>,
+    pub latex_command: Option<&'a str>,
+    pub mathml_tag: Option<&'a str>,
+    pub canonical_name_ko: &'a str,
+    pub canonical_name_en: Option<&'a str>,
+    pub reading_ko: Option<&'a str>,
+    pub reading_en: Option<&'a str>,
+    pub short_meaning_ko: &'a str,
+    pub short_meaning_en: Option<&'a str>,
+    pub symbol_type: &'a str,
     pub difficulty_level: i64,
     pub is_operator: bool,
     pub is_relation: bool,
@@ -23,771 +82,79 @@ pub struct SymbolSeed {
     pub is_greek: bool,
     pub is_constant: bool,
     pub is_function: bool,
-    pub notes: Option<&'static str>,
-    pub aliases: &'static [(&'static str, &'static str)], // (alias, type)
-    pub domains: &'static [(&'static str, &'static str)], // (domain_code, meaning_in_domain)
-    pub examples: &'static [(&'static str, &'static str)], // (latex, explanation)
+    pub notes: Option<&'a str>,
 }
 
-const DOMAINS: &[(&str, &str, &str)] = &[
-    ("math-algebra",     "수학 - 대수",       "Algebra"),
-    ("math-calculus",    "수학 - 미적분",      "Calculus"),
-    ("math-set-logic",   "수학 - 집합/논리",   "Set/Logic"),
-    ("math-geometry",    "수학 - 기하",        "Geometry"),
-    ("physics-general",  "물리",              "Physics"),
-    ("chemistry",        "화학",              "Chemistry"),
-    ("biology",          "생물",              "Biology"),
-    ("earth-science",    "지구과학",          "Earth Science"),
-    ("statistics",       "통계",              "Statistics"),
-    ("logic",            "논리학",            "Logic"),
-];
-
-const SEEDS: &[SymbolSeed] = &[
-    // ── Greek lowercase ────────────────────────────────────────────
-    SymbolSeed {
-        unicode_char: Some("α"), latex_command: Some("\\alpha"), mathml_tag: None,
-        canonical_name_ko: "알파", canonical_name_en: Some("alpha"),
-        reading_ko: Some("알파"), reading_en: Some("alpha"),
-        short_meaning_ko: "그리스 문자 첫 번째. 변수, 각도, 분수, 알파 입자 등에 폭넓게 사용.",
-        short_meaning_en: Some("First Greek letter; common variable for angles, coefficients, alpha particles."),
-        symbol_type: "greek-letter", difficulty_level: 1,
-        is_operator: false, is_relation: false, is_delimiter: false, is_greek: true, is_constant: false, is_function: false,
-        notes: None,
-        aliases: &[("alpha","en-name"),("ㄱ","ko-name"),("a","latex")],
-        domains: &[
-            ("math-algebra","임의 변수 또는 계수"),
-            ("physics-general","입사각, 알파 입자"),
-            ("chemistry","알파 탄소, 알파 붕괴"),
-            ("statistics","유의수준 α"),
-        ],
-        examples: &[("\\alpha + \\beta = \\pi","두 각의 합을 표현")],
-    },
-    SymbolSeed {
-        unicode_char: Some("β"), latex_command: Some("\\beta"), mathml_tag: None,
-        canonical_name_ko: "베타", canonical_name_en: Some("beta"),
-        reading_ko: Some("베타"), reading_en: Some("beta"),
-        short_meaning_ko: "그리스 문자 두 번째. 회귀 계수, 베타 입자 등에 사용.",
-        short_meaning_en: None,
-        symbol_type: "greek-letter", difficulty_level: 1,
-        is_operator: false, is_relation: false, is_delimiter: false, is_greek: true, is_constant: false, is_function: false,
-        notes: None,
-        aliases: &[("beta","en-name")],
-        domains: &[("statistics","회귀계수"),("physics-general","베타 붕괴")],
-        examples: &[],
-    },
-    SymbolSeed {
-        unicode_char: Some("γ"), latex_command: Some("\\gamma"), mathml_tag: None,
-        canonical_name_ko: "감마", canonical_name_en: Some("gamma"),
-        reading_ko: Some("감마"), reading_en: Some("gamma"),
-        short_meaning_ko: "감마 함수, 감마선, 로렌츠 인자 등에 사용.",
-        short_meaning_en: None,
-        symbol_type: "greek-letter", difficulty_level: 1,
-        is_operator: false, is_relation: false, is_delimiter: false, is_greek: true, is_constant: false, is_function: false,
-        notes: None, aliases: &[("gamma","en-name")],
-        domains: &[("physics-general","로렌츠 인자 또는 감마선"),("math-calculus","감마 함수 Γ(n)")],
-        examples: &[],
-    },
-    SymbolSeed {
-        unicode_char: Some("δ"), latex_command: Some("\\delta"), mathml_tag: None,
-        canonical_name_ko: "델타 (소문자)", canonical_name_en: Some("delta"),
-        reading_ko: Some("델타"), reading_en: Some("delta"),
-        short_meaning_ko: "미소 변화량 또는 디랙 델타 함수.",
-        short_meaning_en: None,
-        symbol_type: "greek-letter", difficulty_level: 1,
-        is_operator: false, is_relation: false, is_delimiter: false, is_greek: true, is_constant: false, is_function: false,
-        notes: None, aliases: &[("delta","en-name")],
-        domains: &[("math-calculus","미소 변화 δx"),("physics-general","디랙 델타 함수 δ(x)")],
-        examples: &[],
-    },
-    SymbolSeed {
-        unicode_char: Some("ε"), latex_command: Some("\\varepsilon"), mathml_tag: None,
-        canonical_name_ko: "엡실론", canonical_name_en: Some("epsilon"),
-        reading_ko: Some("엡실론"), reading_en: Some("epsilon"),
-        short_meaning_ko: "매우 작은 양수, 진공의 유전율 등에 사용.",
-        short_meaning_en: None,
-        symbol_type: "greek-letter", difficulty_level: 1,
-        is_operator: false, is_relation: false, is_delimiter: false, is_greek: true, is_constant: false, is_function: false,
-        notes: None, aliases: &[("epsilon","en-name"),("\\epsilon","latex")],
-        domains: &[("math-calculus","ε-δ 극한 정의의 ε"),("physics-general","진공 유전율 ε₀")],
-        examples: &[],
-    },
-    SymbolSeed {
-        unicode_char: Some("θ"), latex_command: Some("\\theta"), mathml_tag: None,
-        canonical_name_ko: "세타", canonical_name_en: Some("theta"),
-        reading_ko: Some("세타"), reading_en: Some("theta"),
-        short_meaning_ko: "각도나 회전을 나타내는 변수.",
-        short_meaning_en: None,
-        symbol_type: "greek-letter", difficulty_level: 1,
-        is_operator: false, is_relation: false, is_delimiter: false, is_greek: true, is_constant: false, is_function: false,
-        notes: None, aliases: &[("theta","en-name")],
-        domains: &[("math-geometry","각도 θ"),("physics-general","위상각, 입사각")],
-        examples: &[("\\sin\\theta","세타의 사인 값")],
-    },
-    SymbolSeed {
-        unicode_char: Some("λ"), latex_command: Some("\\lambda"), mathml_tag: None,
-        canonical_name_ko: "람다", canonical_name_en: Some("lambda"),
-        reading_ko: Some("람다"), reading_en: Some("lambda"),
-        short_meaning_ko: "파장, 고윳값, 람다 계산식의 변수.",
-        short_meaning_en: None,
-        symbol_type: "greek-letter", difficulty_level: 1,
-        is_operator: false, is_relation: false, is_delimiter: false, is_greek: true, is_constant: false, is_function: false,
-        notes: None, aliases: &[("lambda","en-name")],
-        domains: &[("physics-general","파장 λ"),("math-algebra","행렬 고윳값")],
-        examples: &[],
-    },
-    SymbolSeed {
-        unicode_char: Some("μ"), latex_command: Some("\\mu"), mathml_tag: None,
-        canonical_name_ko: "뮤", canonical_name_en: Some("mu"),
-        reading_ko: Some("뮤"), reading_en: Some("mu"),
-        short_meaning_ko: "평균, 마찰계수, 마이크로(10⁻⁶) 접두어, 투자율 등.",
-        short_meaning_en: None,
-        symbol_type: "greek-letter", difficulty_level: 1,
-        is_operator: false, is_relation: false, is_delimiter: false, is_greek: true, is_constant: false, is_function: false,
-        notes: Some("분야 의존성 큰 기호."),
-        aliases: &[("mu","en-name"),("뮤우","ko-name")],
-        domains: &[
-            ("statistics","모평균 μ"),
-            ("physics-general","마찰계수 또는 자기 투자율 μ₀"),
-            ("chemistry","마이크로 접두어 μg, μm"),
-            ("biology","미생물 마이크로 단위"),
-        ],
-        examples: &[("\\bar{x} \\to \\mu","표본평균이 모평균에 수렴")],
-    },
-    SymbolSeed {
-        unicode_char: Some("π"), latex_command: Some("\\pi"), mathml_tag: None,
-        canonical_name_ko: "파이", canonical_name_en: Some("pi"),
-        reading_ko: Some("파이"), reading_en: Some("pi"),
-        short_meaning_ko: "원주율(약 3.14159). 원의 둘레와 지름의 비.",
-        short_meaning_en: None,
-        symbol_type: "greek-letter", difficulty_level: 1,
-        is_operator: false, is_relation: false, is_delimiter: false, is_greek: true, is_constant: true, is_function: false,
-        notes: None, aliases: &[("pi","en-name"),("원주율","ko-name")],
-        domains: &[("math-geometry","원의 둘레 = 2πr"),("physics-general","주기적 현상")],
-        examples: &[("e^{i\\pi} + 1 = 0","오일러 항등식")],
-    },
-    SymbolSeed {
-        unicode_char: Some("ρ"), latex_command: Some("\\rho"), mathml_tag: None,
-        canonical_name_ko: "로", canonical_name_en: Some("rho"),
-        reading_ko: Some("로"), reading_en: Some("rho"),
-        short_meaning_ko: "밀도, 상관계수, 전하 밀도 등.",
-        short_meaning_en: None,
-        symbol_type: "greek-letter", difficulty_level: 1,
-        is_operator: false, is_relation: false, is_delimiter: false, is_greek: true, is_constant: false, is_function: false,
-        notes: None, aliases: &[("rho","en-name")],
-        domains: &[("physics-general","밀도 ρ"),("statistics","상관계수 ρ")],
-        examples: &[],
-    },
-    SymbolSeed {
-        unicode_char: Some("σ"), latex_command: Some("\\sigma"), mathml_tag: None,
-        canonical_name_ko: "시그마 (소문자)", canonical_name_en: Some("sigma"),
-        reading_ko: Some("시그마"), reading_en: Some("sigma"),
-        short_meaning_ko: "표준편차, 응력, 표면장력, 시그마 결합 등.",
-        short_meaning_en: None,
-        symbol_type: "greek-letter", difficulty_level: 1,
-        is_operator: false, is_relation: false, is_delimiter: false, is_greek: true, is_constant: false, is_function: false,
-        notes: None, aliases: &[("sigma","en-name"),("표준편차","ko-name")],
-        domains: &[
-            ("statistics","모표준편차 σ"),
-            ("physics-general","응력 σ 또는 표면장력"),
-            ("chemistry","시그마 결합"),
-        ],
-        examples: &[("\\sigma^2 = E[(X-\\mu)^2]","분산의 정의")],
-    },
-    SymbolSeed {
-        unicode_char: Some("τ"), latex_command: Some("\\tau"), mathml_tag: None,
-        canonical_name_ko: "타우", canonical_name_en: Some("tau"),
-        reading_ko: Some("타우"), reading_en: Some("tau"),
-        short_meaning_ko: "토크, 시정수, 시간상수, 고유시간 등.",
-        short_meaning_en: None,
-        symbol_type: "greek-letter", difficulty_level: 1,
-        is_operator: false, is_relation: false, is_delimiter: false, is_greek: true, is_constant: false, is_function: false,
-        notes: None, aliases: &[("tau","en-name")],
-        domains: &[("physics-general","토크 τ = r × F"),("biology","신경 시간상수")],
-        examples: &[],
-    },
-    SymbolSeed {
-        unicode_char: Some("φ"), latex_command: Some("\\varphi"), mathml_tag: None,
-        canonical_name_ko: "파이(소문자) / 피", canonical_name_en: Some("phi"),
-        reading_ko: Some("파이"), reading_en: Some("phi"),
-        short_meaning_ko: "각도 φ, 황금비, 자속 등.",
-        short_meaning_en: None,
-        symbol_type: "greek-letter", difficulty_level: 1,
-        is_operator: false, is_relation: false, is_delimiter: false, is_greek: true, is_constant: false, is_function: false,
-        notes: None, aliases: &[("phi","en-name"),("\\phi","latex")],
-        domains: &[("math-geometry","각도 φ"),("physics-general","자기 선속 Φ")],
-        examples: &[],
-    },
-    SymbolSeed {
-        unicode_char: Some("ω"), latex_command: Some("\\omega"), mathml_tag: None,
-        canonical_name_ko: "오메가", canonical_name_en: Some("omega"),
-        reading_ko: Some("오메가"), reading_en: Some("omega"),
-        short_meaning_ko: "각진동수, 각속도, 옴(저항) 등.",
-        short_meaning_en: None,
-        symbol_type: "greek-letter", difficulty_level: 1,
-        is_operator: false, is_relation: false, is_delimiter: false, is_greek: true, is_constant: false, is_function: false,
-        notes: None, aliases: &[("omega","en-name")],
-        domains: &[("physics-general","각속도 ω = 2πf"),("earth-science","지구 자전 각속도")],
-        examples: &[],
-    },
-    // ── Greek uppercase ───────────────────────────────────────────
-    SymbolSeed {
-        unicode_char: Some("Σ"), latex_command: Some("\\Sigma"), mathml_tag: None,
-        canonical_name_ko: "대문자 시그마", canonical_name_en: Some("Sigma"),
-        reading_ko: Some("시그마"), reading_en: Some("sigma"),
-        short_meaning_ko: "합 기호. 첨자 범위의 모든 항을 더한다.",
-        short_meaning_en: None,
-        symbol_type: "operator", difficulty_level: 1,
-        is_operator: true, is_relation: false, is_delimiter: false, is_greek: true, is_constant: false, is_function: false,
-        notes: None,
-        aliases: &[("sigma","en-name"),("sum","en-name"),("합","ko-name"),("시그머","pronunciation")],
-        domains: &[
-            ("math-algebra","유한 합 ∑"),
-            ("math-calculus","급수 합"),
-            ("statistics","표본 합"),
-        ],
-        examples: &[
-            ("\\sum_{i=1}^{n} i = \\frac{n(n+1)}{2}","1부터 n까지 자연수의 합"),
-            ("\\sum_{i=1}^{n} i^2","제곱수의 합"),
-        ],
-    },
-    SymbolSeed {
-        unicode_char: Some("Π"), latex_command: Some("\\Pi"), mathml_tag: None,
-        canonical_name_ko: "대문자 파이", canonical_name_en: Some("Pi"),
-        reading_ko: Some("파이"), reading_en: Some("Pi"),
-        short_meaning_ko: "곱 기호. 첨자 범위의 모든 항을 곱한다.",
-        short_meaning_en: None,
-        symbol_type: "operator", difficulty_level: 1,
-        is_operator: true, is_relation: false, is_delimiter: false, is_greek: true, is_constant: false, is_function: false,
-        notes: None, aliases: &[("product","en-name"),("곱","ko-name")],
-        domains: &[("math-algebra","곱 ∏"),("statistics","우도 함수")],
-        examples: &[("n! = \\prod_{i=1}^{n} i","계승의 곱 표현")],
-    },
-    SymbolSeed {
-        unicode_char: Some("Δ"), latex_command: Some("\\Delta"), mathml_tag: None,
-        canonical_name_ko: "대문자 델타", canonical_name_en: Some("Delta"),
-        reading_ko: Some("델타"), reading_en: Some("Delta"),
-        short_meaning_ko: "변화량, 판별식, 라플라시안.",
-        short_meaning_en: None,
-        symbol_type: "operator", difficulty_level: 1,
-        is_operator: true, is_relation: false, is_delimiter: false, is_greek: true, is_constant: false, is_function: false,
-        notes: None, aliases: &[("Delta","en-name"),("판별식","ko-name")],
-        domains: &[
-            ("math-algebra","판별식 Δ = b² - 4ac"),
-            ("physics-general","변화량 Δx, Δt"),
-            ("math-calculus","라플라시안 Δf = ∇²f"),
-        ],
-        examples: &[("\\Delta x = x_f - x_i","위치 변화량")],
-    },
-    SymbolSeed {
-        unicode_char: Some("Φ"), latex_command: Some("\\Phi"), mathml_tag: None,
-        canonical_name_ko: "대문자 파이(Phi)", canonical_name_en: Some("Phi"),
-        reading_ko: Some("파이"), reading_en: Some("Phi"),
-        short_meaning_ko: "자기 선속, 전기 선속, 누적 분포함수.",
-        short_meaning_en: None,
-        symbol_type: "greek-letter", difficulty_level: 1,
-        is_operator: false, is_relation: false, is_delimiter: false, is_greek: true, is_constant: false, is_function: false,
-        notes: None, aliases: &[("Phi","en-name")],
-        domains: &[("physics-general","자기 선속 Φ_B"),("statistics","표준정규 누적분포 Φ(z)")],
-        examples: &[],
-    },
-    SymbolSeed {
-        unicode_char: Some("Ω"), latex_command: Some("\\Omega"), mathml_tag: None,
-        canonical_name_ko: "대문자 오메가", canonical_name_en: Some("Omega"),
-        reading_ko: Some("오메가"), reading_en: Some("Omega"),
-        short_meaning_ko: "옴(전기 저항 단위), 표본공간, 입체각.",
-        short_meaning_en: None,
-        symbol_type: "unit-symbol", difficulty_level: 1,
-        is_operator: false, is_relation: false, is_delimiter: false, is_greek: true, is_constant: false, is_function: false,
-        notes: None, aliases: &[("ohm","en-name"),("옴","ko-name")],
-        domains: &[("physics-general","저항 단위 Ω"),("statistics","표본공간 Ω")],
-        examples: &[],
-    },
-    // ── Calculus / analysis ───────────────────────────────────────
-    SymbolSeed {
-        unicode_char: Some("∫"), latex_command: Some("\\int"), mathml_tag: None,
-        canonical_name_ko: "적분 기호", canonical_name_en: Some("integral sign"),
-        reading_ko: Some("인테그럴"), reading_en: Some("integral"),
-        short_meaning_ko: "연속적인 변화량을 누적하여 전체 값을 구할 때 사용하는 기호.",
-        short_meaning_en: Some("Sums a continuous quantity over an interval."),
-        symbol_type: "operator", difficulty_level: 2,
-        is_operator: true, is_relation: false, is_delimiter: false, is_greek: false, is_constant: false, is_function: false,
-        notes: None,
-        aliases: &[("integral","en-name"),("적분","ko-name"),("인테그럴","pronunciation"),("인테그랄","pronunciation")],
-        domains: &[
-            ("math-calculus","리만/르베그 적분"),
-            ("physics-general","일, 전하, 확률 등의 누적량"),
-        ],
-        examples: &[
-            ("\\int_0^1 x^2 \\, dx = \\frac{1}{3}","0부터 1까지 x² 의 적분"),
-            ("\\int f(x)\\,dx","부정적분"),
-        ],
-    },
-    SymbolSeed {
-        unicode_char: Some("∮"), latex_command: Some("\\oint"), mathml_tag: None,
-        canonical_name_ko: "닫힌 경로 적분", canonical_name_en: Some("contour integral"),
-        reading_ko: Some("컨투어 인테그럴"), reading_en: Some("contour integral"),
-        short_meaning_ko: "닫힌 경로 또는 곡면에 대한 적분. 가우스 법칙·암페어 법칙 등에 사용.",
-        short_meaning_en: None,
-        symbol_type: "operator", difficulty_level: 3,
-        is_operator: true, is_relation: false, is_delimiter: false, is_greek: false, is_constant: false, is_function: false,
-        notes: None, aliases: &[("oint","latex"),("닫힌 적분","ko-name")],
-        domains: &[("physics-general","가우스 법칙, 암페어 법칙"),("math-calculus","경로 적분")],
-        examples: &[("\\oint \\mathbf{E} \\cdot d\\mathbf{A} = \\frac{Q}{\\varepsilon_0}","가우스 법칙")],
-    },
-    SymbolSeed {
-        unicode_char: Some("∂"), latex_command: Some("\\partial"), mathml_tag: None,
-        canonical_name_ko: "편미분 기호", canonical_name_en: Some("partial derivative"),
-        reading_ko: Some("델"), reading_en: Some("partial"),
-        short_meaning_ko: "다변수 함수의 한 변수에 대한 미분.",
-        short_meaning_en: None,
-        symbol_type: "operator", difficulty_level: 2,
-        is_operator: true, is_relation: false, is_delimiter: false, is_greek: false, is_constant: false, is_function: false,
-        notes: None, aliases: &[("partial","en-name"),("편미분","ko-name")],
-        domains: &[("math-calculus","∂f/∂x"),("physics-general","편미분 방정식")],
-        examples: &[("\\frac{\\partial f}{\\partial x}","f의 x에 대한 편미분")],
-    },
-    SymbolSeed {
-        unicode_char: Some("∇"), latex_command: Some("\\nabla"), mathml_tag: None,
-        canonical_name_ko: "나블라", canonical_name_en: Some("nabla"),
-        reading_ko: Some("나블라"), reading_en: Some("del"),
-        short_meaning_ko: "벡터 미분 연산자. 기울기·발산·회전을 표현.",
-        short_meaning_en: None,
-        symbol_type: "operator", difficulty_level: 3,
-        is_operator: true, is_relation: false, is_delimiter: false, is_greek: false, is_constant: false, is_function: false,
-        notes: None, aliases: &[("nabla","en-name"),("del","en-name")],
-        domains: &[("math-calculus","∇f 기울기"),("physics-general","∇·E 발산, ∇×B 회전")],
-        examples: &[("\\nabla \\cdot \\mathbf{E} = \\frac{\\rho}{\\varepsilon_0}","전기장 발산")],
-    },
-    SymbolSeed {
-        unicode_char: Some("∞"), latex_command: Some("\\infty"), mathml_tag: None,
-        canonical_name_ko: "무한대", canonical_name_en: Some("infinity"),
-        reading_ko: Some("무한대"), reading_en: Some("infinity"),
-        short_meaning_ko: "한없이 큰 양 또는 극한값을 나타냄.",
-        short_meaning_en: None,
-        symbol_type: "constant", difficulty_level: 1,
-        is_operator: false, is_relation: false, is_delimiter: false, is_greek: false, is_constant: true, is_function: false,
-        notes: None, aliases: &[("infinity","en-name"),("inf","en-name")],
-        domains: &[("math-calculus","극한 lim x→∞")],
-        examples: &[("\\lim_{x \\to \\infty} \\frac{1}{x} = 0","무한대로의 극한")],
-    },
-    SymbolSeed {
-        unicode_char: Some("√"), latex_command: Some("\\sqrt"), mathml_tag: None,
-        canonical_name_ko: "제곱근", canonical_name_en: Some("square root"),
-        reading_ko: Some("루트"), reading_en: Some("root"),
-        short_meaning_ko: "어떤 수의 제곱근. n승근은 \\sqrt[n]{x}.",
-        short_meaning_en: None,
-        symbol_type: "function", difficulty_level: 1,
-        is_operator: false, is_relation: false, is_delimiter: false, is_greek: false, is_constant: false, is_function: true,
-        notes: None, aliases: &[("sqrt","en-name"),("루트","ko-name"),("근","ko-name")],
-        domains: &[("math-algebra","제곱근 √2")],
-        examples: &[("\\sqrt{b^2 - 4ac}","이차방정식 판별식")],
-    },
-    // ── Relations ─────────────────────────────────────────────────
-    SymbolSeed {
-        unicode_char: Some("≤"), latex_command: Some("\\leq"), mathml_tag: None,
-        canonical_name_ko: "작거나 같다", canonical_name_en: Some("less than or equal to"),
-        reading_ko: Some("작거나 같다"), reading_en: Some("less than or equal to"),
-        short_meaning_ko: "왼쪽 값이 오른쪽 값보다 작거나 같음을 나타내는 관계 기호.",
-        short_meaning_en: None,
-        symbol_type: "relation", difficulty_level: 1,
-        is_operator: false, is_relation: true, is_delimiter: false, is_greek: false, is_constant: false, is_function: false,
-        notes: None, aliases: &[("\\le","latex"),("이하","ko-name"),("le","en-name")],
-        domains: &[("math-algebra","부등식"),("logic","순서관계")],
-        examples: &[("x \\leq 5","x는 5 이하")],
-    },
-    SymbolSeed {
-        unicode_char: Some("≥"), latex_command: Some("\\geq"), mathml_tag: None,
-        canonical_name_ko: "크거나 같다", canonical_name_en: Some("greater than or equal to"),
-        reading_ko: Some("크거나 같다"), reading_en: Some("greater than or equal to"),
-        short_meaning_ko: "왼쪽 값이 오른쪽 값보다 크거나 같음.",
-        short_meaning_en: None,
-        symbol_type: "relation", difficulty_level: 1,
-        is_operator: false, is_relation: true, is_delimiter: false, is_greek: false, is_constant: false, is_function: false,
-        notes: None, aliases: &[("\\ge","latex"),("이상","ko-name")],
-        domains: &[("math-algebra","부등식")],
-        examples: &[],
-    },
-    SymbolSeed {
-        unicode_char: Some("≠"), latex_command: Some("\\neq"), mathml_tag: None,
-        canonical_name_ko: "같지 않다", canonical_name_en: Some("not equal to"),
-        reading_ko: Some("같지 않다"), reading_en: Some("not equal"),
-        short_meaning_ko: "양변이 서로 다름을 나타냄.",
-        short_meaning_en: None,
-        symbol_type: "relation", difficulty_level: 1,
-        is_operator: false, is_relation: true, is_delimiter: false, is_greek: false, is_constant: false, is_function: false,
-        notes: None, aliases: &[("ne","en-name"),("\\ne","latex")],
-        domains: &[("math-algebra","부등식")],
-        examples: &[],
-    },
-    SymbolSeed {
-        unicode_char: Some("≈"), latex_command: Some("\\approx"), mathml_tag: None,
-        canonical_name_ko: "거의 같다", canonical_name_en: Some("approximately equal"),
-        reading_ko: Some("어프락스"), reading_en: Some("approx"),
-        short_meaning_ko: "두 값이 근사적으로 같음을 나타냄.",
-        short_meaning_en: None,
-        symbol_type: "relation", difficulty_level: 1,
-        is_operator: false, is_relation: true, is_delimiter: false, is_greek: false, is_constant: false, is_function: false,
-        notes: None, aliases: &[("approx","en-name"),("근사","ko-name")],
-        domains: &[("math-algebra","근사값"),("physics-general","근사 추정")],
-        examples: &[("\\pi \\approx 3.14159","파이의 근사값")],
-    },
-    SymbolSeed {
-        unicode_char: Some("≡"), latex_command: Some("\\equiv"), mathml_tag: None,
-        canonical_name_ko: "합동/항등", canonical_name_en: Some("equivalent"),
-        reading_ko: Some("합동"), reading_en: Some("equiv"),
-        short_meaning_ko: "정의에 의한 동등, 또는 합동 관계(modulo).",
-        short_meaning_en: None,
-        symbol_type: "relation", difficulty_level: 2,
-        is_operator: false, is_relation: true, is_delimiter: false, is_greek: false, is_constant: false, is_function: false,
-        notes: None, aliases: &[("equiv","en-name")],
-        domains: &[("math-algebra","합동식 a ≡ b (mod n)"),("logic","논리 동치")],
-        examples: &[("17 \\equiv 2 \\pmod{5}","17은 5로 나눈 나머지가 2와 합동")],
-    },
-    // ── Set / logic ───────────────────────────────────────────────
-    SymbolSeed {
-        unicode_char: Some("∈"), latex_command: Some("\\in"), mathml_tag: None,
-        canonical_name_ko: "속한다", canonical_name_en: Some("element of"),
-        reading_ko: Some("엘리먼트 오브"), reading_en: Some("in"),
-        short_meaning_ko: "왼쪽 원소가 오른쪽 집합에 속함.",
-        short_meaning_en: None,
-        symbol_type: "set-symbol", difficulty_level: 1,
-        is_operator: false, is_relation: true, is_delimiter: false, is_greek: false, is_constant: false, is_function: false,
-        notes: None, aliases: &[("in","en-name"),("속한다","ko-name")],
-        domains: &[("math-set-logic","원소의 소속")],
-        examples: &[("2 \\in \\mathbb{N}","2는 자연수 집합의 원소")],
-    },
-    SymbolSeed {
-        unicode_char: Some("∉"), latex_command: Some("\\notin"), mathml_tag: None,
-        canonical_name_ko: "속하지 않는다", canonical_name_en: Some("not element of"),
-        reading_ko: Some("낫 인"), reading_en: Some("not in"),
-        short_meaning_ko: "원소가 집합에 속하지 않음.",
-        short_meaning_en: None,
-        symbol_type: "set-symbol", difficulty_level: 1,
-        is_operator: false, is_relation: true, is_delimiter: false, is_greek: false, is_constant: false, is_function: false,
-        notes: None, aliases: &[("notin","en-name")],
-        domains: &[("math-set-logic","비소속")],
-        examples: &[],
-    },
-    SymbolSeed {
-        unicode_char: Some("⊂"), latex_command: Some("\\subset"), mathml_tag: None,
-        canonical_name_ko: "부분집합", canonical_name_en: Some("subset of"),
-        reading_ko: Some("서브셋"), reading_en: Some("subset"),
-        short_meaning_ko: "A의 모든 원소가 B에 속하면 A ⊂ B.",
-        short_meaning_en: None,
-        symbol_type: "set-symbol", difficulty_level: 1,
-        is_operator: false, is_relation: true, is_delimiter: false, is_greek: false, is_constant: false, is_function: false,
-        notes: None, aliases: &[("subset","en-name")],
-        domains: &[("math-set-logic","부분집합")],
-        examples: &[("\\mathbb{N} \\subset \\mathbb{Z}","자연수는 정수의 부분집합")],
-    },
-    SymbolSeed {
-        unicode_char: Some("⊆"), latex_command: Some("\\subseteq"), mathml_tag: None,
-        canonical_name_ko: "부분집합 또는 같음", canonical_name_en: Some("subset or equal"),
-        reading_ko: Some("서브셋이큐얼"), reading_en: Some("subseteq"),
-        short_meaning_ko: "부분집합 또는 같은 집합.",
-        short_meaning_en: None,
-        symbol_type: "set-symbol", difficulty_level: 1,
-        is_operator: false, is_relation: true, is_delimiter: false, is_greek: false, is_constant: false, is_function: false,
-        notes: None, aliases: &[("subseteq","en-name")],
-        domains: &[("math-set-logic","부분집합")],
-        examples: &[],
-    },
-    SymbolSeed {
-        unicode_char: Some("∪"), latex_command: Some("\\cup"), mathml_tag: None,
-        canonical_name_ko: "합집합", canonical_name_en: Some("union"),
-        reading_ko: Some("유니언"), reading_en: Some("union"),
-        short_meaning_ko: "두 집합의 모든 원소의 합집합.",
-        short_meaning_en: None,
-        symbol_type: "set-symbol", difficulty_level: 1,
-        is_operator: true, is_relation: false, is_delimiter: false, is_greek: false, is_constant: false, is_function: false,
-        notes: None, aliases: &[("union","en-name"),("합집합","ko-name")],
-        domains: &[("math-set-logic","집합 연산")],
-        examples: &[("A \\cup B","A와 B의 합집합")],
-    },
-    SymbolSeed {
-        unicode_char: Some("∩"), latex_command: Some("\\cap"), mathml_tag: None,
-        canonical_name_ko: "교집합", canonical_name_en: Some("intersection"),
-        reading_ko: Some("인터섹션"), reading_en: Some("intersection"),
-        short_meaning_ko: "두 집합에 공통인 원소의 집합.",
-        short_meaning_en: None,
-        symbol_type: "set-symbol", difficulty_level: 1,
-        is_operator: true, is_relation: false, is_delimiter: false, is_greek: false, is_constant: false, is_function: false,
-        notes: None, aliases: &[("intersection","en-name"),("교집합","ko-name")],
-        domains: &[("math-set-logic","집합 연산")],
-        examples: &[("A \\cap B","교집합")],
-    },
-    SymbolSeed {
-        unicode_char: Some("∀"), latex_command: Some("\\forall"), mathml_tag: None,
-        canonical_name_ko: "모든", canonical_name_en: Some("for all"),
-        reading_ko: Some("포올"), reading_en: Some("for all"),
-        short_meaning_ko: "전칭 양화사. \"모든 x에 대하여\".",
-        short_meaning_en: None,
-        symbol_type: "logic-symbol", difficulty_level: 2,
-        is_operator: false, is_relation: false, is_delimiter: false, is_greek: false, is_constant: false, is_function: false,
-        notes: None, aliases: &[("forall","en-name")],
-        domains: &[("logic","전칭"),("math-set-logic","전칭")],
-        examples: &[("\\forall x \\in \\mathbb{R}, x^2 \\geq 0","모든 실수의 제곱은 0 이상")],
-    },
-    SymbolSeed {
-        unicode_char: Some("∃"), latex_command: Some("\\exists"), mathml_tag: None,
-        canonical_name_ko: "존재한다", canonical_name_en: Some("exists"),
-        reading_ko: Some("익시스츠"), reading_en: Some("exists"),
-        short_meaning_ko: "존재 양화사. \"어떤 x가 존재한다\".",
-        short_meaning_en: None,
-        symbol_type: "logic-symbol", difficulty_level: 2,
-        is_operator: false, is_relation: false, is_delimiter: false, is_greek: false, is_constant: false, is_function: false,
-        notes: None, aliases: &[("exists","en-name")],
-        domains: &[("logic","존재"),("math-set-logic","존재")],
-        examples: &[],
-    },
-    SymbolSeed {
-        unicode_char: Some("¬"), latex_command: Some("\\neg"), mathml_tag: None,
-        canonical_name_ko: "부정", canonical_name_en: Some("not"),
-        reading_ko: Some("낫"), reading_en: Some("not"),
-        short_meaning_ko: "논리 부정.",
-        short_meaning_en: None,
-        symbol_type: "logic-symbol", difficulty_level: 2,
-        is_operator: false, is_relation: false, is_delimiter: false, is_greek: false, is_constant: false, is_function: false,
-        notes: None, aliases: &[("neg","latex"),("부정","ko-name")],
-        domains: &[("logic","부정")],
-        examples: &[],
-    },
-    // ── Arrows ────────────────────────────────────────────────────
-    SymbolSeed {
-        unicode_char: Some("→"), latex_command: Some("\\to"), mathml_tag: None,
-        canonical_name_ko: "오른쪽 화살표", canonical_name_en: Some("right arrow"),
-        reading_ko: Some("화살표"), reading_en: Some("to"),
-        short_meaning_ko: "함수의 사상, 극한의 접근, 화학 반응 방향.",
-        short_meaning_en: None,
-        symbol_type: "arrow", difficulty_level: 1,
-        is_operator: false, is_relation: false, is_delimiter: false, is_greek: false, is_constant: false, is_function: false,
-        notes: None, aliases: &[("\\rightarrow","latex"),("to","en-name")],
-        domains: &[
-            ("math-calculus","극한 x → 0"),
-            ("chemistry","반응 방향 H₂ + O₂ → H₂O"),
-            ("logic","함의"),
-        ],
-        examples: &[("f: A \\to B","A에서 B로의 함수")],
-    },
-    SymbolSeed {
-        unicode_char: Some("⇌"), latex_command: Some("\\rightleftharpoons"), mathml_tag: None,
-        canonical_name_ko: "가역 반응 화살표", canonical_name_en: Some("equilibrium arrows"),
-        reading_ko: Some("가역 반응"), reading_en: Some("equilibrium"),
-        short_meaning_ko: "화학에서 정·역반응이 모두 일어나는 가역 반응을 나타냄.",
-        short_meaning_en: None,
-        symbol_type: "arrow", difficulty_level: 2,
-        is_operator: false, is_relation: false, is_delimiter: false, is_greek: false, is_constant: false, is_function: false,
-        notes: None, aliases: &[("equilibrium","en-name")],
-        domains: &[("chemistry","화학 평형")],
-        examples: &[("N_2 + 3H_2 \\rightleftharpoons 2NH_3","암모니아 합성")],
-    },
-    // ── Operators ─────────────────────────────────────────────────
-    SymbolSeed {
-        unicode_char: Some("±"), latex_command: Some("\\pm"), mathml_tag: None,
-        canonical_name_ko: "플러스 마이너스", canonical_name_en: Some("plus or minus"),
-        reading_ko: Some("플러스 마이너스"), reading_en: Some("plus minus"),
-        short_meaning_ko: "두 부호 모두 적용된다는 표기. 오차 표시에도 사용.",
-        short_meaning_en: None,
-        symbol_type: "operator", difficulty_level: 1,
-        is_operator: true, is_relation: false, is_delimiter: false, is_greek: false, is_constant: false, is_function: false,
-        notes: None, aliases: &[("pm","en-name"),("플마","ko-name")],
-        domains: &[("math-algebra","이차방정식 해"),("physics-general","측정 오차")],
-        examples: &[("x = \\frac{-b \\pm \\sqrt{b^2-4ac}}{2a}","이차방정식 근의 공식")],
-    },
-    SymbolSeed {
-        unicode_char: Some("×"), latex_command: Some("\\times"), mathml_tag: None,
-        canonical_name_ko: "곱하기 / 벡터 외적", canonical_name_en: Some("times / cross product"),
-        reading_ko: Some("곱하기"), reading_en: Some("times"),
-        short_meaning_ko: "수의 곱, 벡터의 외적, 직접곱.",
-        short_meaning_en: None,
-        symbol_type: "operator", difficulty_level: 1,
-        is_operator: true, is_relation: false, is_delimiter: false, is_greek: false, is_constant: false, is_function: false,
-        notes: None, aliases: &[("times","en-name"),("곱하기","ko-name"),("외적","ko-name")],
-        domains: &[("math-algebra","곱셈"),("physics-general","외적 a×b")],
-        examples: &[("\\mathbf{F} = q\\mathbf{v} \\times \\mathbf{B}","로런츠 힘")],
-    },
-    SymbolSeed {
-        unicode_char: Some("÷"), latex_command: Some("\\div"), mathml_tag: None,
-        canonical_name_ko: "나누기", canonical_name_en: Some("divide"),
-        reading_ko: Some("나누기"), reading_en: Some("divide"),
-        short_meaning_ko: "나눗셈.",
-        short_meaning_en: None,
-        symbol_type: "operator", difficulty_level: 1,
-        is_operator: true, is_relation: false, is_delimiter: false, is_greek: false, is_constant: false, is_function: false,
-        notes: None, aliases: &[("div","en-name")],
-        domains: &[("math-algebra","나눗셈")],
-        examples: &[],
-    },
-    SymbolSeed {
-        unicode_char: Some("·"), latex_command: Some("\\cdot"), mathml_tag: None,
-        canonical_name_ko: "점곱 / 가운데점", canonical_name_en: Some("dot / inner product"),
-        reading_ko: Some("닷"), reading_en: Some("dot"),
-        short_meaning_ko: "벡터의 내적 또는 곱 표기.",
-        short_meaning_en: None,
-        symbol_type: "operator", difficulty_level: 1,
-        is_operator: true, is_relation: false, is_delimiter: false, is_greek: false, is_constant: false, is_function: false,
-        notes: None, aliases: &[("cdot","latex"),("내적","ko-name"),("dot product","en-name")],
-        domains: &[("math-algebra","벡터 내적"),("physics-general","일 W = F·d")],
-        examples: &[("\\mathbf{a} \\cdot \\mathbf{b} = |\\mathbf{a}||\\mathbf{b}|\\cos\\theta","내적 공식")],
-    },
-    // ── Functions / constants ────────────────────────────────────
-    SymbolSeed {
-        unicode_char: None, latex_command: Some("\\sin"), mathml_tag: None,
-        canonical_name_ko: "사인 함수", canonical_name_en: Some("sine"),
-        reading_ko: Some("사인"), reading_en: Some("sine"),
-        short_meaning_ko: "직각삼각형의 대변과 빗변의 비.",
-        short_meaning_en: None,
-        symbol_type: "function", difficulty_level: 1,
-        is_operator: false, is_relation: false, is_delimiter: false, is_greek: false, is_constant: false, is_function: true,
-        notes: None, aliases: &[("sin","en-name")],
-        domains: &[("math-geometry","삼각함수"),("physics-general","파동 해석")],
-        examples: &[("\\sin(\\pi/2) = 1","사인 90도는 1")],
-    },
-    SymbolSeed {
-        unicode_char: None, latex_command: Some("\\cos"), mathml_tag: None,
-        canonical_name_ko: "코사인 함수", canonical_name_en: Some("cosine"),
-        reading_ko: Some("코사인"), reading_en: Some("cosine"),
-        short_meaning_ko: "직각삼각형의 인접변과 빗변의 비.",
-        short_meaning_en: None,
-        symbol_type: "function", difficulty_level: 1,
-        is_operator: false, is_relation: false, is_delimiter: false, is_greek: false, is_constant: false, is_function: true,
-        notes: None, aliases: &[("cos","en-name")],
-        domains: &[("math-geometry","삼각함수")],
-        examples: &[],
-    },
-    SymbolSeed {
-        unicode_char: None, latex_command: Some("\\tan"), mathml_tag: None,
-        canonical_name_ko: "탄젠트 함수", canonical_name_en: Some("tangent"),
-        reading_ko: Some("탄젠트"), reading_en: Some("tangent"),
-        short_meaning_ko: "사인을 코사인으로 나눈 값.",
-        short_meaning_en: None,
-        symbol_type: "function", difficulty_level: 1,
-        is_operator: false, is_relation: false, is_delimiter: false, is_greek: false, is_constant: false, is_function: true,
-        notes: None, aliases: &[("tan","en-name")],
-        domains: &[("math-geometry","삼각함수")],
-        examples: &[],
-    },
-    SymbolSeed {
-        unicode_char: None, latex_command: Some("\\log"), mathml_tag: None,
-        canonical_name_ko: "로그", canonical_name_en: Some("log"),
-        reading_ko: Some("로그"), reading_en: Some("log"),
-        short_meaning_ko: "지수의 역연산. 기본은 상용로그(밑 10).",
-        short_meaning_en: None,
-        symbol_type: "function", difficulty_level: 1,
-        is_operator: false, is_relation: false, is_delimiter: false, is_greek: false, is_constant: false, is_function: true,
-        notes: None, aliases: &[("log","en-name")],
-        domains: &[("math-calculus","로그 함수"),("chemistry","pH = -log[H+]")],
-        examples: &[("\\log_{10}(1000) = 3","상용로그")],
-    },
-    SymbolSeed {
-        unicode_char: None, latex_command: Some("\\ln"), mathml_tag: None,
-        canonical_name_ko: "자연로그", canonical_name_en: Some("natural log"),
-        reading_ko: Some("엘엔"), reading_en: Some("ln"),
-        short_meaning_ko: "밑이 e인 로그.",
-        short_meaning_en: None,
-        symbol_type: "function", difficulty_level: 1,
-        is_operator: false, is_relation: false, is_delimiter: false, is_greek: false, is_constant: false, is_function: true,
-        notes: None, aliases: &[("ln","en-name"),("자연로그","ko-name")],
-        domains: &[("math-calculus","자연로그")],
-        examples: &[("\\ln e = 1","자연로그 e는 1")],
-    },
-    SymbolSeed {
-        unicode_char: None, latex_command: Some("\\lim"), mathml_tag: None,
-        canonical_name_ko: "극한", canonical_name_en: Some("limit"),
-        reading_ko: Some("리미트"), reading_en: Some("limit"),
-        short_meaning_ko: "함수가 특정 값에 한없이 가까워질 때의 값.",
-        short_meaning_en: None,
-        symbol_type: "function", difficulty_level: 2,
-        is_operator: false, is_relation: false, is_delimiter: false, is_greek: false, is_constant: false, is_function: true,
-        notes: None, aliases: &[("lim","en-name"),("극한","ko-name")],
-        domains: &[("math-calculus","극한")],
-        examples: &[("\\lim_{x \\to 0} \\frac{\\sin x}{x} = 1","유명한 극한")],
-    },
-    SymbolSeed {
-        unicode_char: Some("e"), latex_command: Some("e"), mathml_tag: None,
-        canonical_name_ko: "오일러 수", canonical_name_en: Some("Euler's number"),
-        reading_ko: Some("이"), reading_en: Some("e"),
-        short_meaning_ko: "자연상수 e ≈ 2.71828. 자연로그의 밑.",
-        short_meaning_en: None,
-        symbol_type: "constant", difficulty_level: 1,
-        is_operator: false, is_relation: false, is_delimiter: false, is_greek: false, is_constant: true, is_function: false,
-        notes: None, aliases: &[("e","en-name"),("자연상수","ko-name")],
-        domains: &[("math-calculus","자연상수")],
-        examples: &[("e^{i\\pi} + 1 = 0","오일러 항등식")],
-    },
-    SymbolSeed {
-        unicode_char: Some("ℏ"), latex_command: Some("\\hbar"), mathml_tag: None,
-        canonical_name_ko: "약분 플랑크 상수", canonical_name_en: Some("h-bar"),
-        reading_ko: Some("에이치 바"), reading_en: Some("h-bar"),
-        short_meaning_ko: "플랑크 상수를 2π로 나눈 값. 양자역학의 기본 상수.",
-        short_meaning_en: None,
-        symbol_type: "constant", difficulty_level: 3,
-        is_operator: false, is_relation: false, is_delimiter: false, is_greek: false, is_constant: true, is_function: false,
-        notes: None, aliases: &[("hbar","en-name")],
-        domains: &[("physics-general","양자역학 ℏ = h/2π")],
-        examples: &[("E = \\hbar \\omega","광자 에너지")],
-    },
-    // ── Chemistry / units ────────────────────────────────────────
-    SymbolSeed {
-        unicode_char: Some("°"), latex_command: Some("^{\\circ}"), mathml_tag: None,
-        canonical_name_ko: "도 (각도/온도)", canonical_name_en: Some("degree"),
-        reading_ko: Some("도"), reading_en: Some("degree"),
-        short_meaning_ko: "각도(°) 또는 온도(°C, °F)의 단위.",
-        short_meaning_en: None,
-        symbol_type: "unit-symbol", difficulty_level: 1,
-        is_operator: false, is_relation: false, is_delimiter: false, is_greek: false, is_constant: false, is_function: false,
-        notes: None, aliases: &[("degree","en-name"),("도","ko-name")],
-        domains: &[("math-geometry","각도"),("earth-science","온도/위도"),("chemistry","온도")],
-        examples: &[("90^{\\circ}","구십도")],
-    },
-    SymbolSeed {
-        unicode_char: None, latex_command: Some("\\ce"), mathml_tag: None,
-        canonical_name_ko: "화학식 (mhchem)", canonical_name_en: Some("chemistry equation"),
-        reading_ko: None, reading_en: None,
-        short_meaning_ko: "MathJax mhchem 패키지의 화학식 매크로.",
-        short_meaning_en: None,
-        symbol_type: "chemistry-notation", difficulty_level: 2,
-        is_operator: false, is_relation: false, is_delimiter: false, is_greek: false, is_constant: false, is_function: false,
-        notes: None, aliases: &[("ce","en-name"),("화학식","ko-name")],
-        domains: &[("chemistry","반응식 작성")],
-        examples: &[("\\ce{2H2 + O2 -> 2H2O}","수소와 산소의 반응")],
-    },
-];
+fn has(flags: &[String], v: &str) -> bool {
+    flags.iter().any(|f| f == v)
+}
 
 pub fn install(db: &Db) -> AppResult<()> {
-    // 1. domains
-    let mut domain_ids = std::collections::HashMap::new();
-    for (code, name_ko, name_en) in DOMAINS {
-        let id = db.insert_domain(code, name_ko, Some(name_en))?;
-        domain_ids.insert(*code, id);
+    let parsed: SeedFile = serde_json::from_str(SEED_JSON).map_err(|e| {
+        tracing::error!("seed json parse failed: {e}");
+        e
+    })?;
+
+    let mut domain_ids: HashMap<String, i64> = HashMap::new();
+    for d in &parsed.domains {
+        let id = db.insert_domain(&d.code, &d.name_ko, d.name_en.as_deref())?;
+        domain_ids.insert(d.code.clone(), id);
     }
-    // 2. symbols + aliases + domain map + examples
-    for s in SEEDS {
-        let id = db.insert_symbol(s)?;
-        if let Some(c) = s.unicode_char {
+
+    for raw in &parsed.symbols {
+        let seed = SymbolSeed {
+            unicode_char: raw.unicode_char.as_deref(),
+            latex_command: raw.latex_command.as_deref(),
+            mathml_tag: raw.mathml_tag.as_deref(),
+            canonical_name_ko: &raw.canonical_name_ko,
+            canonical_name_en: raw.canonical_name_en.as_deref(),
+            reading_ko: raw.reading_ko.as_deref(),
+            reading_en: raw.reading_en.as_deref(),
+            short_meaning_ko: &raw.short_meaning_ko,
+            short_meaning_en: raw.short_meaning_en.as_deref(),
+            symbol_type: &raw.symbol_type,
+            difficulty_level: raw.difficulty_level,
+            is_operator: has(&raw.flags, "operator"),
+            is_relation: has(&raw.flags, "relation"),
+            is_delimiter: has(&raw.flags, "delimiter"),
+            is_greek: has(&raw.flags, "greek"),
+            is_constant: has(&raw.flags, "constant"),
+            is_function: has(&raw.flags, "function"),
+            notes: raw.notes.as_deref(),
+        };
+        let id = db.insert_symbol(&seed)?;
+        if let Some(c) = seed.unicode_char {
             db.insert_alias(id, c, "unicode", "ko")?;
         }
-        if let Some(c) = s.latex_command {
+        if let Some(c) = seed.latex_command {
             db.insert_alias(id, c, "latex", "ko")?;
         }
-        db.insert_alias(id, s.canonical_name_ko, "ko-name", "ko")?;
-        if let Some(en) = s.canonical_name_en {
+        db.insert_alias(id, seed.canonical_name_ko, "ko-name", "ko")?;
+        if let Some(en) = seed.canonical_name_en {
             db.insert_alias(id, en, "en-name", "en")?;
         }
-        if let Some(r) = s.reading_ko {
+        if let Some(r) = seed.reading_ko {
             db.insert_alias(id, r, "pronunciation", "ko")?;
         }
-        for (alias, ty) in s.aliases {
+        for (alias, ty) in &raw.aliases {
             db.insert_alias(id, alias, ty, "ko")?;
         }
-        for (domain_code, meaning) in s.domains {
-            if let Some(&did) = domain_ids.get(domain_code) {
-                db.link_domain(id, did, Some(meaning), 1)?;
+        for (domain_code, meaning) in &raw.domains {
+            if let Some(did) = domain_ids.get(domain_code) {
+                db.link_domain(id, *did, Some(meaning), 1)?;
+            } else {
+                tracing::warn!("seed: unknown domain '{}'", domain_code);
             }
         }
-        for (latex, explain) in s.examples {
-            db.insert_example(id, latex, Some(explain), s.difficulty_level)?;
+        for (latex, explain) in &raw.examples {
+            db.insert_example(id, latex, Some(explain), seed.difficulty_level)?;
         }
     }
+
+    tracing::info!(
+        "seed installed: {} domains, {} symbols",
+        parsed.domains.len(),
+        parsed.symbols.len()
+    );
     Ok(())
 }

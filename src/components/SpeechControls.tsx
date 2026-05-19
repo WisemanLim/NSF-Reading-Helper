@@ -33,15 +33,23 @@ export function SpeechControls({ text, defaultRate = 1.0 }: Props) {
           <IconPlay /> 읽기
         </button>
       )}
-      <label className="ml-2 text-xs text-fg-muted">속도</label>
+      <label htmlFor="tts-rate" className="ml-2 text-xs text-fg-muted">
+        속도
+      </label>
       <input
+        id="tts-rate"
         type="range"
         min={0.5}
         max={2.0}
         step={0.1}
         value={rate}
         onChange={(e) => setRate(parseFloat(e.target.value))}
-        className="w-32 accent-brand"
+        aria-label="음성 속도 배수"
+        aria-valuemin={0.5}
+        aria-valuemax={2.0}
+        aria-valuenow={rate}
+        aria-valuetext={`${rate.toFixed(1)}배`}
+        className="w-32 accent-brand focus:outline-none focus-visible:ring-2 focus-visible:ring-brand"
       />
       <span className="w-10 text-right font-mono text-xs text-fg-muted">
         {rate.toFixed(1)}×

@@ -38,15 +38,26 @@ export function FormulaEditor({ value, onChange, onAnalyze, analyzing }: Props) 
         </div>
       </div>
       <textarea
-        className={cn("input-base min-h-[120px] resize-y font-mono")}
+        className={cn("input-base min-h-[120px] resize-y font-mono focus:outline-none focus-visible:ring-2 focus-visible:ring-brand")}
         value={value}
         onChange={(e) => {
           onChange(e.target.value);
           setFormat(detectInputFormat(e.target.value));
         }}
-        placeholder={"예: \\int_0^1 x^2 \\, dx"}
+        onKeyDown={(e) => {
+          if ((e.metaKey || e.ctrlKey) && e.key === "Enter" && !analyzing) {
+            e.preventDefault();
+            handleAnalyze();
+          }
+        }}
+        placeholder={"예: \\int_0^1 x^2 \\, dx   (Ctrl/⌘+Enter 로 분석)"}
         spellCheck={false}
+        aria-label="수식 입력"
+        aria-describedby="formula-format-hint"
       />
+      <span id="formula-format-hint" className="sr-only">
+        Ctrl 또는 커맨드와 엔터 키를 함께 누르면 분석합니다.
+      </span>
       <div className="flex flex-wrap gap-1">
         {SAMPLES.map((s) => (
           <button

@@ -39,8 +39,25 @@ services:
     networks:
       - nsf-local
 
+  # Optional OCR sidecar — start via `docker compose -f docker-compose.local.yml --profile ocr up -d`.
+  ocr:
+    profiles: ["ocr"]
+    build:
+      context: .
+      dockerfile: Dockerfile.ocr
+    container_name: nsf-ocr-local
+    restart: unless-stopped
+    environment:
+      LOG_LEVEL: ${OCR_LOG_LEVEL:-INFO}
+      PRELOAD_MODEL: ${OCR_PRELOAD:-0}
+    volumes:
+      - nsf-ocr-cache:/data/cache
+    networks:
+      - nsf-local
+
 volumes:
   nsf-data:
+  nsf-ocr-cache:
 
 networks:
   nsf-local:

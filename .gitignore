@@ -20,6 +20,38 @@ src-tauri/WixTools*
 src-tauri/gen/schemas
 src-tauri/.omc/**
 
+# Rust / web-server (axum)
+web-server/target
+web-server/Cargo.lock.merge
+web-server/.dev-data/
+web-server/*.sqlite*
+web-server/.env
+web-server/.env.*
+web-server/data/
+web-server/.omc/**
+
+# OCR sidecar (Python)
+ocr/__pycache__/
+ocr/.venv/
+ocr/.pytest_cache/
+ocr/.mypy_cache/
+ocr/.cache/
+ocr/*.egg-info/
+*.pyc
+
+# Docker / runtime data (host-side persistence dirs if mapped locally)
+data/
+pgdata/
+ocr-cache/
+icons-source.png
+
+# Code-signing / secrets (do NOT commit)
+*.p12
+*.pfx
+*.keystore
+.tauri/*.key
+.tauri/*.key.pub
+
 # App data accidentally committed
 models/
 *.sqlite

@@ -1,6 +1,7 @@
 use std::path::Path;
 use std::sync::Mutex;
 
+use rusqlite::functions::FunctionFlags;
 use rusqlite::{params, Connection, OptionalExtension, Row};
 
 use crate::core::error::{AppError, AppResult};
@@ -18,6 +19,8 @@ impl Db {
     pub fn open(path: &Path) -> AppResult<Self> {
         let conn = Connection::open(path)?;
         conn.execute_batch(MIGRATION_V1)?;
+        conn.execute_batch(MIGRATION_V2_FTS)?;
+        register_levenshtein(&conn)?;
         Ok(Self { conn: Mutex::new(conn) })
     }
 
@@ -25,15 +28,76 @@ impl Db {
         self.conn.lock().expect("db poisoned")
     }
 
+    /// Run a closure with an immutable borrow of the connection. Used by
+    /// modules that need ad-hoc queries (e.g. `core::pack`) without exposing
+    /// the mutex.
+    pub fn with_conn<R>(
+        &self,
+        f: impl FnOnce(&Connection) -> AppResult<R>,
+    ) -> AppResult<R> {
+        f(&self.lock())
+    }
+
     pub fn seed_if_empty(&self) -> AppResult<()> {
         let conn = self.lock();
         let count: i64 =
             conn.query_row("select count(*) from symbols", [], |r| r.get(0))?;
         if count > 0 {
+            drop(conn);
+            // Ensure FTS index exists even if seed was installed by an older
+            // build that didn't populate symbols_fts.
+            self.rebuild_fts_if_empty()?;
             return Ok(());
         }
         drop(conn);
         seed::install(self)?;
+        self.rebuild_fts()?;
+        Ok(())
+    }
+
+    /// Wipe and rebuild the FTS5 trigram index from `symbols` + `symbol_aliases`.
+    pub fn rebuild_fts(&self) -> AppResult<()> {
+        let conn = self.lock();
+        conn.execute("delete from symbols_fts", [])?;
+        let mut stmt = conn.prepare(
+            "select s.id, s.canonical_name_ko,
+                    coalesce(s.canonical_name_en,''),
+                    coalesce(s.latex_command,''),
+                    coalesce(s.unicode_char,''),
+                    coalesce(s.reading_ko,''),
+                    coalesce((select group_concat(alias_text, ' ') from symbol_aliases where symbol_id = s.id),'')
+             from symbols s",
+        )?;
+        let rows: Vec<(i64, String)> = stmt
+            .query_map([], |r| {
+                let id: i64 = r.get(0)?;
+                let ko: String = r.get(1)?;
+                let en: String = r.get(2)?;
+                let latex: String = r.get(3)?;
+                let uni: String = r.get(4)?;
+                let reading: String = r.get(5)?;
+                let aliases: String = r.get(6)?;
+                let text = format!("{ko} {en} {latex} {uni} {reading} {aliases}");
+                Ok((id, text))
+            })?
+            .collect::<Result<_, _>>()?;
+        drop(stmt);
+        for (id, text) in rows {
+            conn.execute(
+                "insert into symbols_fts(symbol_id, text) values(?, ?)",
+                params![id, text],
+            )?;
+        }
+        Ok(())
+    }
+
+    fn rebuild_fts_if_empty(&self) -> AppResult<()> {
+        let n: i64 = self
+            .lock()
+            .query_row("select count(*) from symbols_fts", [], |r| r.get(0))?;
+        if n == 0 {
+            self.rebuild_fts()?;
+        }
         Ok(())
     }
 
@@ -57,7 +121,7 @@ impl Db {
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub fn insert_symbol(&self, s: &seed::SymbolSeed) -> AppResult<i64> {
+    pub fn insert_symbol(&self, s: &seed::SymbolSeed<'_>) -> AppResult<i64> {
         let conn = self.lock();
         conn.execute(
             "insert into symbols(
@@ -150,32 +214,127 @@ impl Db {
         Ok(row)
     }
 
+    /// Hybrid search: exact match → FTS5 trigram → Levenshtein fallback.
+    /// Results are deduplicated by symbol id and ordered by (exact, fts rank, edit distance).
     pub fn symbol_search(
         &self,
         q: &str,
         opts: Option<&SearchOptions>,
     ) -> AppResult<Vec<SymbolHit>> {
-        let limit = opts.and_then(|o| o.limit).unwrap_or(30);
+        let q = q.trim();
+        if q.is_empty() {
+            return Ok(vec![]);
+        }
+        let limit = opts.and_then(|o| o.limit).unwrap_or(30).max(1);
         let conn = self.lock();
-        // Match on canonical_ko, canonical_en, latex, unicode, or aliases.
-        let pattern = format!("%{}%", q.to_lowercase());
-        let mut stmt = conn.prepare(
-            "select distinct s.id, s.unicode_char, s.latex_command, s.canonical_name_ko,
-                 s.reading_ko, s.short_meaning_ko, s.symbol_type, null
-             from symbols s
-             left join symbol_aliases a on a.symbol_id = s.id
-             where lower(s.canonical_name_ko) like ?1
-                or lower(coalesce(s.canonical_name_en,'')) like ?1
-                or lower(coalesce(s.latex_command,'')) like ?1
-                or s.unicode_char = ?2
-                or lower(coalesce(a.alias_text,'')) like ?1
-             order by length(s.canonical_name_ko) asc
-             limit ?3",
-        )?;
-        let rows = stmt
-            .query_map(params![pattern, q, limit], row_to_hit)?
-            .collect::<Result<Vec<_>, _>>()?;
-        Ok(rows)
+        let q_lower = q.to_lowercase();
+        let like = format!("%{q_lower}%");
+
+        // 1) Exact / prefix hits — score 0 (highest priority).
+        let mut exact: Vec<(i64, i64)> = conn
+            .prepare(
+                "select distinct s.id, 0 as score
+                 from symbols s
+                 left join symbol_aliases a on a.symbol_id = s.id
+                 where s.unicode_char = ?1
+                    or lower(s.canonical_name_ko) = ?2
+                    or lower(coalesce(s.canonical_name_en,'')) = ?2
+                    or lower(coalesce(s.latex_command,'')) = ?2
+                    or lower(coalesce(a.alias_text,'')) = ?2",
+            )?
+            .query_map(params![q, q_lower], |r| Ok((r.get(0)?, r.get(1)?)))?
+            .collect::<Result<_, _>>()?;
+
+        // 2) Substring (LIKE) hits — score 1.
+        let mut like_hits: Vec<(i64, i64)> = conn
+            .prepare(
+                "select distinct s.id, 1 as score
+                 from symbols s
+                 left join symbol_aliases a on a.symbol_id = s.id
+                 where lower(s.canonical_name_ko) like ?1
+                    or lower(coalesce(s.canonical_name_en,'')) like ?1
+                    or lower(coalesce(s.latex_command,'')) like ?1
+                    or lower(coalesce(a.alias_text,'')) like ?1",
+            )?
+            .query_map(params![like], |r| Ok((r.get(0)?, r.get(1)?)))?
+            .collect::<Result<_, _>>()?;
+
+        // 3) FTS5 trigram hits — score 2.
+        let fts_hits: Vec<(i64, i64)> = if q.chars().count() >= 3 {
+            // FTS5 quoted query — escape embedded quotes.
+            let safe = q.replace('"', "\"\"");
+            let match_query = format!("\"{safe}\"");
+            conn.prepare(
+                "select symbol_id, 2 from symbols_fts where text MATCH ?1 limit 200",
+            )?
+            .query_map(params![match_query], |r| Ok((r.get(0)?, r.get(1)?)))?
+            .collect::<Result<_, _>>()?
+        } else {
+            Vec::new()
+        };
+
+        // 4) Levenshtein fuzzy — within edit distance threshold (depends on length).
+        let max_dist = (q.chars().count() / 3 + 1) as i64;
+        let lev_hits: Vec<(i64, i64)> = conn
+            .prepare(
+                "select s.id, 3
+                 from symbols s
+                 where levenshtein(lower(s.canonical_name_ko), ?1) <= ?2
+                    or levenshtein(lower(coalesce(s.canonical_name_en,'')), ?1) <= ?2
+                 limit 100",
+            )?
+            .query_map(params![q_lower, max_dist], |r| Ok((r.get(0)?, r.get(1)?)))?
+            .collect::<Result<_, _>>()?;
+
+        // Merge keeping minimum score per id.
+        let mut by_id: std::collections::HashMap<i64, i64> =
+            std::collections::HashMap::new();
+        for (id, score) in exact
+            .drain(..)
+            .chain(like_hits.drain(..))
+            .chain(fts_hits.into_iter())
+            .chain(lev_hits.into_iter())
+        {
+            by_id
+                .entry(id)
+                .and_modify(|s| {
+                    if score < *s {
+                        *s = score;
+                    }
+                })
+                .or_insert(score);
+        }
+        if by_id.is_empty() {
+            return Ok(vec![]);
+        }
+        let mut ranked: Vec<(i64, i64)> = by_id.into_iter().collect();
+        ranked.sort_by_key(|(_, s)| *s);
+        ranked.truncate(limit as usize);
+
+        // Hydrate rows.
+        let ids: Vec<i64> = ranked.iter().map(|(id, _)| *id).collect();
+        let placeholders = ids
+            .iter()
+            .map(|_| "?")
+            .collect::<Vec<_>>()
+            .join(",");
+        let sql = format!(
+            "select id, unicode_char, latex_command, canonical_name_ko,
+                reading_ko, short_meaning_ko, symbol_type, null
+             from symbols where id in ({placeholders})"
+        );
+        let mut stmt = conn.prepare(&sql)?;
+        let params: Vec<&dyn rusqlite::ToSql> = ids
+            .iter()
+            .map(|v| v as &dyn rusqlite::ToSql)
+            .collect();
+        let mut rows: std::collections::HashMap<i64, SymbolHit> = stmt
+            .query_map(rusqlite::params_from_iter(params), row_to_hit)?
+            .collect::<Result<Vec<_>, _>>()?
+            .into_iter()
+            .map(|h| (h.id, h))
+            .collect();
+        Ok(ids.into_iter().filter_map(|id| rows.remove(&id)).collect())
     }
 
     pub fn symbol_detail(&self, id: i64) -> AppResult<SymbolDetail> {
@@ -559,3 +718,56 @@ create index if not exists idx_symbols_latex on symbols(latex_command);
 create index if not exists idx_symbols_type on symbols(symbol_type);
 create index if not exists idx_aliases_text on symbol_aliases(alias_text);
 "#;
+
+/// FTS5 trigram virtual table for fuzzy search on Korean / Latin text.
+/// `symbol_id` is UNINDEXED — we only join back to `symbols` by it.
+const MIGRATION_V2_FTS: &str = r#"
+create virtual table if not exists symbols_fts using fts5(
+    symbol_id UNINDEXED,
+    text,
+    tokenize = 'trigram'
+);
+"#;
+
+/// Register a SQLite scalar `levenshtein(a TEXT, b TEXT) -> INTEGER`.
+/// Used by the search query to score fuzzy matches.
+fn register_levenshtein(conn: &Connection) -> AppResult<()> {
+    conn.create_scalar_function(
+        "levenshtein",
+        2,
+        FunctionFlags::SQLITE_DETERMINISTIC | FunctionFlags::SQLITE_UTF8,
+        |ctx| {
+            let a: String = ctx.get(0)?;
+            let b: String = ctx.get(1)?;
+            Ok(levenshtein(&a, &b) as i64)
+        },
+    )?;
+    Ok(())
+}
+
+/// Iterative O(m·n) edit distance over chars (handles Unicode/Hangul jamo).
+fn levenshtein(a: &str, b: &str) -> usize {
+    let a: Vec<char> = a.chars().collect();
+    let b: Vec<char> = b.chars().collect();
+    let m = a.len();
+    let n = b.len();
+    if m == 0 {
+        return n;
+    }
+    if n == 0 {
+        return m;
+    }
+    let mut prev: Vec<usize> = (0..=n).collect();
+    let mut curr = vec![0usize; n + 1];
+    for i in 1..=m {
+        curr[0] = i;
+        for j in 1..=n {
+            let cost = if a[i - 1] == b[j - 1] { 0 } else { 1 };
+            curr[j] = (prev[j] + 1)
+                .min(curr[j - 1] + 1)
+                .min(prev[j - 1] + cost);
+        }
+        std::mem::swap(&mut prev, &mut curr);
+    }
+    prev[n]
+}

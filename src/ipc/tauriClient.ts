@@ -46,4 +46,28 @@ export const tauriIpc = {
   ttsSpeak: (text: string, opts: TtsOptions) =>
     invoke<void>("tts_speak", { text, opts }),
   ttsStop: () => invoke<void>("tts_stop"),
+
+  packImport: (path: string) =>
+    invoke<PackImportResult>("pack_import", { path }),
+  packExport: (path: string, name?: string) =>
+    invoke<PackManifest>("pack_export", { path, name: name ?? null }),
+  ftsRebuild: () => invoke<void>("fts_rebuild"),
 };
+
+export interface PackManifest {
+  name: string;
+  version: string;
+  author?: string | null;
+  license?: string | null;
+  createdAt?: number | null;
+  description?: string | null;
+  symbolCount: number;
+  domainCount: number;
+}
+
+export interface PackImportResult {
+  manifest: PackManifest;
+  insertedSymbols: number;
+  skippedSymbols: number;
+  insertedDomains: number;
+}

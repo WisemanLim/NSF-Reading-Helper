@@ -1,11 +1,12 @@
 import { useEffect } from "react";
 import { FormulaEditor } from "../components/FormulaEditor";
+import { OcrDropzone } from "../components/OcrDropzone";
 import { RenderView } from "../components/RenderView";
 import { SpeechControls } from "../components/SpeechControls";
 import { SymbolPanel } from "../components/SymbolPanel";
 import { TokenList } from "../components/TokenList";
 import { ipc } from "../ipc/client";
-import { latexToSpeech } from "../lib/sre";
+import { generateKoreanSpeech } from "../lib/koSpeak";
 import { useAppStore } from "../store/useAppStore";
 import type { AnalyzeResult, InputFormat } from "../types";
 
@@ -34,19 +35,22 @@ export function AnalyzePage() {
         r = await ipc.analyze({ rawInput: input, format, locale: "ko" });
       } catch (e) {
         console.warn("backend analyze unavailable, falling back to client", e);
-        const speech = await latexToSpeech(input, "ko");
         r = {
           normalizedLatex: input,
-          speech: { ko: speech },
+          speech: { ko: "" },
           tokens: [],
         };
       }
-      if (!r.speech?.ko || r.speech.ko === input) {
-        try {
-          r = { ...r, speech: { ...r.speech, ko: await latexToSpeech(input, "ko") } };
-        } catch {
-          /* keep server speech */
-        }
+      // Always layer the Korean speech polisher on top — even when the backend
+      // produced a token-list, our template+SRE pipeline gives better Korean.
+      try {
+        const ko = await generateKoreanSpeech({
+          latex: r.normalizedLatex ?? input,
+          tokens: r.tokens ?? [],
+        });
+        r = { ...r, speech: { ...r.speech, ko } };
+      } catch (e) {
+        console.debug("koSpeak failed", e);
       }
       setResult(r);
       reloadHistory();
@@ -75,7 +79,11 @@ export function AnalyzePage() {
             onAnalyze={handleAnalyze}
             analyzing={analyzing}
           />
-          <RenderView latex={result?.normalizedLatex || input} />
+          <OcrDropzone onResult={(latex) => setInput(latex)} />
+          <RenderView
+            latex={result?.normalizedLatex || input}
+            ariaSpeech={result?.speech.ko}
+          />
           <SpeechControls text={result?.speech.ko || ""} />
           <div>
             <div className="mb-1 text-xs font-medium text-fg-muted">토큰</div>

@@ -1,0 +1,29 @@
+# syntax=docker/dockerfile:1.7
+# pix2tex OCR sidecar — CPU image.
+# For GPU swap base to nvidia/cuda:12.4.0-runtime-ubuntu22.04 and adjust torch wheel.
+
+FROM python:3.11-slim AS runtime
+
+ENV PYTHONUNBUFFERED=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_NO_CACHE_DIR=1 \
+    TRANSFORMERS_CACHE=/data/cache \
+    HF_HOME=/data/cache
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      build-essential libgl1 libglib2.0-0 ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+COPY ocr/requirements.txt ./requirements.txt
+RUN pip install --upgrade pip && pip install -r requirements.txt
+
+COPY ocr/main.py ./main.py
+
+# Warm up the model on first run to avoid a slow first request (optional).
+ENV PRELOAD_MODEL=0
+
+EXPOSE 8090
+VOLUME ["/data/cache"]
+
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8090"]

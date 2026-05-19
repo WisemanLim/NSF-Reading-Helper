@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { ipc } from "../ipc/client";
 import type { SymbolHit, SymbolDetail } from "../types";
 import { SymbolPanel } from "../components/SymbolPanel";
+import { HandwritingPad } from "../components/HandwritingPad";
 
 export function SearchPage() {
   const [q, setQ] = useState("");
@@ -55,6 +56,9 @@ export function SearchPage() {
       </header>
       <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-hidden p-4 lg:grid-cols-[minmax(0,1fr)_380px]">
         <section className="min-h-0 overflow-y-auto">
+          <div className="mb-3">
+            <HandwritingPad onPickSymbol={(latex) => setQ(latex)} />
+          </div>
           {loading && <div className="p-3 text-xs text-fg-muted">검색 중...</div>}
           {!loading && hits.length === 0 && q && (
             <div className="rounded-lg border border-dashed border-line bg-bg-elevated p-4 text-sm text-fg-muted">

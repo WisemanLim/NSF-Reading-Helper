@@ -1,0 +1,81 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# DISABLED — automated build/release pipeline is commented out by request.
+# To re-enable: uncomment the YAML below (strip leading "# " from each line).
+#
+# Multi-OS release pipeline. Triggered by pushing a tag like `v0.1.0`.
+# Builds and signs Tauri installers for macOS (Universal), Windows (MSI/NSIS),
+# and Linux (deb/AppImage), then publishes a GitHub Release.
+#
+# Secrets required (configure in repository settings):
+#   TAURI_SIGNING_PRIVATE_KEY        — base64 of the updater private key
+#   TAURI_SIGNING_PRIVATE_KEY_PASSWORD
+#   APPLE_CERTIFICATE                — base64 .p12 for macOS Developer ID
+#   APPLE_CERTIFICATE_PASSWORD
+#   APPLE_SIGNING_IDENTITY           — e.g. "Developer ID Application: ..."
+#   APPLE_ID, APPLE_PASSWORD, APPLE_TEAM_ID  (for notarization)
+#   WINDOWS_CERTIFICATE              — base64 .pfx
+#   WINDOWS_CERTIFICATE_PASSWORD
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# name: release
+#
+# on:
+#   push:
+#     tags:
+#       - "v*"
+#
+# jobs:
+#   build:
+#     strategy:
+#       fail-fast: false
+#       matrix:
+#         include:
+#           - platform: macos-14
+#             target: universal-apple-darwin
+#           - platform: windows-latest
+#             target: x86_64-pc-windows-msvc
+#           - platform: ubuntu-22.04
+#             target: x86_64-unknown-linux-gnu
+#     runs-on: ${{ matrix.platform }}
+#     steps:
+#       - uses: actions/checkout@v4
+#
+#       - uses: pnpm/action-setup@v4
+#         with:
+#           version: 10
+#
+#       - uses: actions/setup-node@v4
+#         with:
+#           node-version: 20
+#           cache: pnpm
+#
+#       - uses: dtolnay/rust-toolchain@stable
+#         with:
+#           targets: ${{ matrix.target }}
+#
+#       - name: Install Linux deps
+#         if: matrix.platform == 'ubuntu-22.04'
+#         run: |
+#           sudo apt-get update
+#           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf cmake
+#
+#       - name: pnpm install
+#         run: pnpm install --frozen-lockfile
+#
+#       - name: tauri build
+#         uses: tauri-apps/tauri-action@v0
+#         env:
+#           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+#           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+#           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+#           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+#           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+#           APPLE_ID: ${{ secrets.APPLE_ID }}
+#           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+#           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+#         with:
+#           tagName: ${{ github.ref_name }}
+#           releaseName: "NSF Reading Helper ${{ github.ref_name }}"
+#           releaseDraft: true
+#           prerelease: false
+#           args: ${{ matrix.platform == 'macos-14' && '--target universal-apple-darwin' || (matrix.platform == 'windows-latest' && '--target x86_64-pc-windows-msvc' || '--target x86_64-unknown-linux-gnu') }}

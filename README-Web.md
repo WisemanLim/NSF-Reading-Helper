@@ -429,6 +429,96 @@ VITE_NSF_API_BASE=http://localhost:8080 pnpm dev
 
 ---
 
+## 데이터베이스 — Postgres (운영) / SQLite (로컬·데스크탑)
+
+NSF Reading Helper 의 백엔드는 **단일 환경변수 `NSF_DATABASE_URL`** 로 두 가지 스토리지를 런타임에 선택합니다:
+
+| 환경 | URL | 백엔드 |
+| :-- | :-- | :-- |
+| 운영 `docker-compose.yml` | `postgres://nsf:...@postgres:5432/nsf` | tokio-postgres + `pg_trgm` + `fuzzystrmatch` |
+| 로컬 `docker-compose.local.yml` | (미설정) | rusqlite (As-It-Sounds 와 동일 엔진) + FTS5 trigram |
+| 데스크탑 Tauri | (해당 없음 — Tauri 는 항상 sqlite) | rusqlite |
+
+선택은 [`web-server/src/backend.rs`](web-server/src/backend.rs) 에서 처리됩니다:
+- `postgres://` 또는 `postgresql://` 시작 → Postgres 백엔드 (deadpool pool 16 connections)
+- `sqlite://`, `sqlite:` 또는 미설정 → 로컬 SQLite 파일
+
+### 운영 (Postgres)
+
+`docker-compose.yml` 은 `postgres:16-alpine` 컨테이너 + 헬스체크 + `backend` 의 `depends_on: service_healthy` 를 포함합니다. `.env` 에서 다음 값을 조정:
+
+```env
+POSTGRES_DB=nsf
+POSTGRES_USER=nsf
+POSTGRES_PASSWORD=please-change-this-strong-secret
+```
+
+스키마/인덱스는 [`web-server/migrations/postgres.sql`](web-server/migrations/postgres.sql) 에 정의되어 있고 백엔드 첫 부팅 시 자동 실행됩니다:
+
+- 11개 테이블 (`domains`, `symbols`, `symbol_aliases`, `symbol_domain_map`, `symbol_examples`, `expressions`, `favorites`, `notes`, `app_settings` 등)
+- 확장: `create extension if not exists pg_trgm` / `fuzzystrmatch`
+- GIN trigram 인덱스 3개 (한글명·영문명·별칭) — SQLite FTS5 의 대체
+
+검색 SQL 은 백엔드별 최적화:
+- **Postgres**: `pg_trgm.similarity()` + `fuzzystrmatch.levenshtein()` 를 한 쿼리에서 결합 (이름·LaTeX·Unicode·별칭 + 오타 보정)
+- **SQLite**: 4단계 UNION (exact / LIKE / FTS5 trigram / custom levenshtein scalar)
+
+### 운영 데이터 백업 (Postgres)
+
+```bash
+# 덤프
+docker compose exec -T postgres pg_dump -U nsf nsf > nsf-$(date +%F).sql
+
+# 복원
+docker compose exec -T postgres psql -U nsf nsf < nsf-2026-05-19.sql
+
+# 볼륨 백업 (raw, faster)
+docker run --rm -v nsf-pgdata:/data -v "$PWD":/backup \
+  alpine tar czf /backup/pgdata-$(date +%F).tgz -C /data .
+```
+
+### 로컬 → 운영 전환 시 주의
+
+- `docker-compose.local.yml` 의 SQLite 데이터와 `docker-compose.yml` 의 Postgres 데이터는 **공유되지 않습니다**.
+- 사전(seed)은 첫 부팅 시 자동 설치되므로 신규 환경에서도 데이터 비어 있어도 정상.
+- 사용자 즐겨찾기/노트/히스토리 이전이 필요하면 SQLite 에서 csv 로 export → `psql \copy` 로 import 하거나 `.nsfpack` 으로 사전만 옮기세요.
+
+### Postgres 콘솔 접속
+
+```bash
+docker compose exec postgres psql -U nsf -d nsf
+```
+
+---
+
+## OCR 사이드카 (옵션)
+
+수식 이미지를 LaTeX 로 변환하는 [`pix2tex`](https://github.com/lukas-blecher/LaTeX-OCR) 기반 사이드카를 docker compose 프로파일로 추가했습니다.
+
+```bash
+# 운영: nginx-proxy + acme 와 함께 OCR 까지 기동
+docker compose --profile ocr up -d --build
+
+# 로컬: TLS 없이 OCR 까지
+docker compose -f docker-compose.local.yml --profile ocr up -d --build
+```
+
+- 컨테이너: `nsf-ocr` (운영) / `nsf-ocr-local` (로컬), 내부 포트 8090
+- 라우팅: 프론트엔드 nginx 가 `/ocr/` 를 사이드카로 프록시 ([deploy/nginx.app.conf](deploy/nginx.app.conf))
+- 첫 요청 시 pix2tex 모델 다운로드 (~수백 MB) → `nsf-ocr-cache` 볼륨에 캐싱. 워밍업하려면 `OCR_PRELOAD=1` 환경변수 설정
+- 사이드카가 꺼져 있으면 프론트엔드 UI 의 OCR 박스가 자동으로 숨김 (헬스체크 기반)
+
+CPU 전용. GPU 가속이 필요하면 [`Dockerfile.ocr`](Dockerfile.ocr) 의 base 이미지를 `nvidia/cuda:*` 로, `requirements.txt` 의 torch 휠을 `cu12*` 로 교체.
+
+API:
+
+| Method | Path | 설명 |
+| :-- | :-- | :-- |
+| GET | `/ocr/healthz` | 헬스체크 |
+| POST | `/ocr/ocr/predict` (multipart `file`) | 이미지 → `{ latex, width, height }` |
+
+---
+
 ## 보안 / 인증 메모
 
 본 배포는 **단일 인스턴스 / 인증 없음** 기본형입니다 (`/api/*` 공개).

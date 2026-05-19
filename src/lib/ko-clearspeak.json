@@ -1,0 +1,68 @@
+{
+  "$schema": "internal://ko-clearspeak-v1",
+  "_doc": "Korean speech polish rules layered on top of SRE output and template-based linearization. See src/lib/koSpeak.ts.",
+
+  "templates": [
+    { "pattern": "^\\\\int_\\{?([^}\\s]+)\\}?\\^\\{?([^}\\s]+)\\}?\\s*(.+?)\\s*\\\\?,?\\s*d\\s*([a-zA-Z])$",  "speech": "$1 부터 $2 까지 $3 을(를) $4 에 대하여 적분" },
+    { "pattern": "^\\\\sum_\\{([^}=]+)=([^}]+)\\}\\^\\{?([^}]+)\\}?\\s*(.+)$", "speech": "$1 가 $2 부터 $3 까지일 때 $4 의 합" },
+    { "pattern": "^\\\\prod_\\{([^}=]+)=([^}]+)\\}\\^\\{?([^}]+)\\}?\\s*(.+)$", "speech": "$1 가 $2 부터 $3 까지일 때 $4 의 곱" },
+    { "pattern": "^\\\\lim_\\{([^}]+)\\\\to\\s*([^}]+)\\}\\s*(.+)$", "speech": "$1 이(가) $2 로 갈 때 $3 의 극한" },
+    { "pattern": "^\\\\frac\\{([^{}]+)\\}\\{([^{}]+)\\}$", "speech": "$2 분의 $1" },
+    { "pattern": "^\\\\sqrt\\{([^{}]+)\\}$", "speech": "루트 $1" },
+    { "pattern": "^\\\\sqrt\\[([^\\]]+)\\]\\{([^{}]+)\\}$", "speech": "$1 제곱근 $2" },
+    { "pattern": "^([a-zA-Z])\\^2$", "speech": "$1 제곱" },
+    { "pattern": "^([a-zA-Z])\\^3$", "speech": "$1 세제곱" },
+    { "pattern": "^([a-zA-Z])\\^\\{?([0-9]+)\\}?$", "speech": "$1 의 $2 제곱" },
+    { "pattern": "^([a-zA-Z])_\\{?([0-9a-zA-Z]+)\\}?$", "speech": "$1 아래첨자 $2" },
+    { "pattern": "^([a-zA-Z])\\^\\{?([0-9a-zA-Z\\-]+)\\}?$", "speech": "$1 의 $2 승" },
+    { "pattern": "^([a-zA-Z]+)\\(([^()]+)\\)$", "speech": "$1 $2" },
+    { "pattern": "^\\\\binom\\{([^{}]+)\\}\\{([^{}]+)\\}$", "speech": "$1 콤비네이션 $2" }
+  ],
+
+  "replacements": [
+    { "from": "\\\\,", "to": " " },
+    { "from": "\\\\;", "to": " " },
+    { "from": "\\\\!", "to": "" },
+    { "from": "\\\\quad", "to": " " },
+    { "from": "\\\\qquad", "to": " " },
+    { "from": "\\\\left", "to": "" },
+    { "from": "\\\\right", "to": "" },
+    { "from": "\\{", "to": " " },
+    { "from": "\\}", "to": " " },
+    { "from": "\\s+", "to": " " }
+  ],
+
+  "sre_post": [
+    { "from": "(?i)\\bintegral\\b", "to": "적분" },
+    { "from": "(?i)\\bsummation\\b", "to": "합" },
+    { "from": "(?i)\\bproduct\\b", "to": "곱" },
+    { "from": "(?i)\\blimit\\b", "to": "극한" },
+    { "from": "(?i)\\bsquared\\b", "to": "제곱" },
+    { "from": "(?i)\\bcubed\\b", "to": "세제곱" },
+    { "from": "(?i)\\bsquare root of\\b", "to": "루트" },
+    { "from": "(?i)\\bfraction\\b", "to": " 분수 " },
+    { "from": "(?i)\\bover\\b", "to": "분의" },
+    { "from": "(?i)\\bplus\\b", "to": "더하기" },
+    { "from": "(?i)\\bminus\\b", "to": "빼기" },
+    { "from": "(?i)\\btimes\\b", "to": "곱하기" },
+    { "from": "(?i)\\bdivided by\\b", "to": "나누기" },
+    { "from": "(?i)\\bequals\\b", "to": "는" },
+    { "from": "(?i)\\bequal to\\b", "to": "는" },
+    { "from": "(?i)\\bless than or equal to\\b", "to": "작거나 같다" },
+    { "from": "(?i)\\bgreater than or equal to\\b", "to": "크거나 같다" },
+    { "from": "(?i)\\bnot equal to\\b", "to": "같지 않다" },
+    { "from": "(?i)\\bapproximately\\b", "to": "약" },
+    { "from": "(?i)\\bderivative\\b", "to": "도함수" },
+    { "from": "(?i)\\bpartial\\b", "to": "편미분" }
+  ],
+
+  "lexicon": {
+    "alpha":   "알파",   "beta":   "베타",   "gamma":  "감마",   "delta":  "델타",
+    "epsilon": "엡실론", "zeta":   "제타",   "eta":    "에타",   "theta":  "세타",
+    "iota":    "요타",   "kappa":  "카파",   "lambda": "람다",   "mu":     "뮤",
+    "nu":      "뉴",     "xi":     "크사이", "omicron":"오미크론","pi":    "파이",
+    "rho":     "로",     "sigma":  "시그마", "tau":    "타우",   "upsilon":"윕실론",
+    "phi":     "피",     "chi":    "카이",   "psi":    "프사이", "omega":  "오메가",
+    "infinity":"무한대", "nabla":  "나블라"
+  }
+}

@@ -45,13 +45,41 @@ services:
     networks:
       - proxy
 
+  # PostgreSQL — production storage. The pg_trgm + fuzzystrmatch extensions
+  # are created by the web-server migration on first connect; no manual init
+  # script required.
+  postgres:
+    image: postgres:16-alpine
+    container_name: nsf-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-nsf}
+      POSTGRES_USER: ${POSTGRES_USER:-nsf}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-nsf-change-me}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - nsf-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-nsf} -d ${POSTGRES_DB:-nsf}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - proxy
+
   backend:
     build:
       context: .
       dockerfile: Dockerfile.web
     container_name: nsf-backend
     restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
     environment:
+      # Production = Postgres. The web-server reads NSF_DATABASE_URL at startup;
+      # postgres:// → tokio-postgres path, sqlite:... or unset → rusqlite.
+      NSF_DATABASE_URL: postgres://${POSTGRES_USER:-nsf}:${POSTGRES_PASSWORD:-nsf-change-me}@postgres:5432/${POSTGRES_DB:-nsf}
       NSF_DATA_DIR: /data
       NSF_BIND: 0.0.0.0:8080
       RUST_LOG: ${RUST_LOG:-info}
@@ -77,12 +105,31 @@ services:
     networks:
       - proxy
 
+  # Optional OCR sidecar (pix2tex). Start with: `docker compose --profile ocr up -d`.
+  # The frontend nginx proxies /ocr/ to this container when present.
+  ocr:
+    profiles: ["ocr"]
+    build:
+      context: .
+      dockerfile: Dockerfile.ocr
+    container_name: nsf-ocr
+    restart: unless-stopped
+    environment:
+      LOG_LEVEL: ${OCR_LOG_LEVEL:-INFO}
+      PRELOAD_MODEL: ${OCR_PRELOAD:-0}
+    volumes:
+      - nsf-ocr-cache:/data/cache
+    networks:
+      - proxy
+
 volumes:
   certs:
   vhost:
   html:
   acme:
   nsf-data:
+  nsf-ocr-cache:
+  nsf-pgdata:
 
 networks:
   proxy:
