@@ -1,0 +1,47 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "NSF Reading Helper",
+  "version": "0.1.0",
+  "identifier": "com.nsfreading.app",
+  "build": {
+    "beforeDevCommand": "pnpm dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "pnpm build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "NSF Reading Helper",
+        "width": 1280,
+        "height": 820,
+        "minWidth": 960,
+        "minHeight": 640,
+        "resizable": true,
+        "fullscreen": false,
+        "center": true
+      }
+    ],
+    "security": {
+      "csp": null,
+      "assetProtocol": { "enable": true, "scope": ["**"] }
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "category": "Education",
+    "shortDescription": "Reads natural-science formulas with Korean explanations",
+    "longDescription": "Renders LaTeX/MathML/AsciiMath formulas, speaks them in Korean using SRE, and explains every symbol per domain (math, physics, chemistry, biology, earth science).",
+    "copyright": "Copyright © 2026 NSF Reading Helper contributors",
+    "publisher": "NSF Reading Helper",
+    "homepage": "https://github.com/nsfreading/nsf-reading-helper",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ]
+  }
+}

@@ -1,0 +1,37 @@
+# syntax=docker/dockerfile:1.7
+# Backend image — axum web server reusing the desktop core via #[path].
+FROM rust:1.82-bookworm AS builder
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      build-essential pkg-config git \
+  && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /build
+
+# web-server uses #[path = "../src-tauri/src/core/*.rs"] so both trees
+# must live in the build context.
+COPY web-server ./web-server
+COPY src-tauri ./src-tauri
+
+WORKDIR /build/web-server
+
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/build/web-server/target \
+    cargo build --release && \
+    cp target/release/nsf-reading-helper-web /usr/local/bin/nsf-reading-helper-web
+
+
+FROM debian:bookworm-slim AS runtime
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /usr/local/bin/nsf-reading-helper-web /usr/local/bin/nsf-reading-helper-web
+
+ENV NSF_DATA_DIR=/data \
+    NSF_BIND=0.0.0.0:8080 \
+    RUST_LOG=info
+
+EXPOSE 8080
+VOLUME ["/data"]
+
+CMD ["/usr/local/bin/nsf-reading-helper-web"]

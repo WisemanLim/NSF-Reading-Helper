@@ -1,0 +1,35 @@
+# Keep build context tiny — without this Docker copies the entire repo
+# (incl. Rust/Vite build outputs and node_modules) which can be tens of GB.
+
+# Build / dependency outputs
+**/node_modules
+**/target
+**/dist
+**/.next
+**/.cache
+**/.vite
+**/.parcel-cache
+
+# Editor / OS
+.git
+.gitignore
+.idea
+.vscode
+.DS_Store
+*.log
+
+# Tauri build artifacts
+src-tauri/target
+src-tauri/gen
+
+# Local sample data
+.samples
+.dev-data
+
+# Docker / env (the running compose loads .env from the host, not the image)
+.env
+.env.*
+!.env.example
+
+# Compose deployment scratch
+deploy/data

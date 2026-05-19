@@ -1,0 +1,47 @@
+# NSF Reading Helper — Local dev compose (no TLS, no Let's Encrypt).
+#
+# Use this file instead of docker-compose.yml when you just want to run
+# everything on localhost without nginx-proxy / acme-companion:
+#
+#     docker compose -f docker-compose.local.yml up -d --build
+#
+# Then open http://localhost:8000
+#
+# Backend and frontend speak plain HTTP on the internal `nsf-local` network;
+# frontend's nginx is mapped to host port 8000.
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    container_name: nsf-backend-local
+    restart: unless-stopped
+    environment:
+      NSF_DATA_DIR: /data
+      NSF_BIND: 0.0.0.0:8080
+      RUST_LOG: ${RUST_LOG:-info}
+    volumes:
+      - nsf-data:/data
+    networks:
+      - nsf-local
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.web-frontend
+    container_name: nsf-frontend-local
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "${NSF_HOST_PORT:-8000}:80"
+    networks:
+      - nsf-local
+
+volumes:
+  nsf-data:
+
+networks:
+  nsf-local:
+    name: nsf-local
