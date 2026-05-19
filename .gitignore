@@ -37,11 +37,9 @@ models/
 *.njsproj
 *.sln
 *.sw?
+.omc/**
+.claude/**
 
 # macOS code signing artifacts
 *.mobileprovision
 *.provisionprofile
-
-# samples
-.samples
-.omc/**
